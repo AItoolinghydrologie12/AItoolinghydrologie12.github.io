@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Gravellus</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Barlow:wght@400;500&display=swap">
+<style>
+/* Layout: kaart vult het scherm; bediening in een zijbalk (breed) of onder de kaart (telefoon) */
+:root{
+  --bg:#eef1ec; --panel:#fbfcfa; --fg:#1d2820; --muted:#5a685d; --line:#d6dcd3;
+  --accent:#2f5d3a; --accent-fg:#ffffff;
+  --grind:#b5791f; --paved:#6e7681; --unknown:#a3ab9f; --danger:#a3392a; --ok:#2f6d3e;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#111613; --panel:#171d19; --fg:#e4e9e3; --muted:#9aa79c; --line:#2b342e;
+    --accent:#7fb38a; --accent-fg:#0f1511;
+    --grind:#e0a547; --paved:#9aa3ad; --unknown:#5f6a62; --danger:#e07a68; --ok:#86c895;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:var(--f-body);font-size:15px;line-height:1.45;background:var(--bg);color:var(--fg);
+  display:grid;grid-template-columns:360px 1fr;grid-template-areas:"panel map";
+}
+#map{grid-area:map;height:100%;min-height:300px}
+#panel{
+  grid-area:panel;overflow-y:auto;background:var(--panel);border-right:1px solid var(--line);
+  padding-block:20px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:16px;
+  display:flex;flex-direction:column;gap:18px;
+}
+@media (max-width:760px){
+  html,body{height:auto}
+  body{grid-template-columns:1fr;grid-template-areas:"map" "panel"}
+  #map{height:52vh}
+  input[type=search],select{font-size:16px}   /* iPhone zoomt anders in bij het aantikken van een veld */
+  #panel{border-right:0;border-top:1px solid var(--line);overflow:visible;
+    padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+}
+h1{font-family:var(--f-display);font-weight:600;font-size:30px;letter-spacing:.01em;margin:0;line-height:1}
+.sub{color:var(--muted);margin:4px 0 0}
+.group{display:flex;flex-direction:column;gap:8px}
+.label{font-family:var(--f-display);font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:flex;justify-content:space-between;align-items:baseline}
+.label output{font-size:20px;color:var(--fg);letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--fg);padding:7px 14px;font:inherit;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-fg)}
+select{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.btn{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:8px 12px;border-radius:8px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.primary{font-family:var(--f-display);font-weight:600;font-size:19px;letter-spacing:.03em;background:var(--accent);color:var(--accent-fg);border:0;padding:12px 16px;border-radius:10px;cursor:pointer;width:100%}
+.primary:disabled{opacity:.55;cursor:progress}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--grind);outline-offset:2px}
+.check{display:flex;gap:8px;align-items:center;cursor:pointer}
+.check input{accent-color:var(--accent);width:18px;height:18px}
+.hint{font-size:13px;color:var(--muted);margin:0}
+#status{font-size:14px;color:var(--muted);min-height:1.4em;margin:0}
+#status.err{color:var(--danger)}
+#list{display:flex;flex-direction:column;gap:8px}
+.cand{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;text-align:left;width:100%;
+  font:inherit;color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer}
+.cand[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.cand .no{font-family:var(--f-display);font-weight:600;font-size:17px;width:30px;height:30px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;color:#fff}
+.cand .km{font-family:var(--f-display);font-weight:600;font-size:20px;font-variant-numeric:tabular-nums}
+.cand .meta{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.cand .pct{font-family:var(--f-display);font-weight:600;font-size:20px;font-variant-numeric:tabular-nums;color:var(--grind);text-align:right}
+.cand .pct.low{color:var(--muted)}
+.cand .bar{grid-column:1/-1;display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--line)}
+.cand .split{grid-column:1/-1}
+.bar span{display:block;height:100%}
+input[type=search]{font:inherit;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg);flex:1;min-width:0}
+.btn[aria-pressed=true]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+#viaList{display:flex;flex-direction:column;gap:6px}
+.via-item{display:flex;align-items:center;gap:8px;font-size:14px}
+.via-item span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.via-item button{padding:2px 9px}
+.via-pin{width:24px;height:24px;border-radius:6px;background:var(--grind);color:#fff;border:2px solid var(--panel);
+  display:flex;align-items:center;justify-content:center;font:600 12px var(--f-display);box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.no-pin{width:24px;height:24px;border-radius:50%;color:#fff;border:2px solid #fff;
+  display:flex;align-items:center;justify-content:center;font:600 13px var(--f-display);box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer}
+.cand.off{opacity:.5}
+.arrow{width:16px;height:16px;line-height:0;filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))}
+/* aan/uit-knopjes per lus, als kaartknop linksonder (kaarttegels zijn altijd licht, dus vaste kleuren) */
+.loop-toggle{display:flex;gap:6px;align-items:center;background:#fff;color:#1d2820;padding:6px 8px;border-radius:10px;box-shadow:0 1px 5px rgba(0,0,0,.3);font:500 12px var(--f-body)}
+.loop-toggle button{width:30px;height:30px;border-radius:50%;border:2px solid var(--c);background:var(--c);
+  font:600 15px var(--f-display);cursor:pointer;padding:0}
+.loop-toggle button[aria-pressed=false]{background:#fff;color:#5a685d!important;border-style:dashed}
+/* hoogteprofiel: blauw vlak met lijn, rasterlijnen, tooltip met hoogte/afstand/helling */
+#detail{border:1px solid var(--accent);border-top:0;border-radius:0 0 10px 10px;margin-top:-10px;padding:14px 12px 12px}
+.cand[aria-pressed=true]{border-radius:10px 10px 0 0}
+#elev{position:relative;width:100%;touch-action:pan-y}
+#elev svg{display:block;width:100%;overflow:visible}
+#elev text{fill:var(--muted);font:11px var(--f-body);font-variant-numeric:tabular-nums}
+.p-grid{stroke:var(--line);stroke-width:1}
+.p-line{stroke:#2a78d6;stroke-width:1.5;fill:none;stroke-linejoin:round}
+.p-area{fill:#2a78d6;fill-opacity:.38}
+.p-dot{fill:#2a78d6;stroke:#fff;stroke-width:2}
+.p-tip{position:absolute;pointer-events:none;background:#24292e;color:#fff;border-radius:6px;padding:6px 9px;
+  font:12px/1.45 var(--f-body);font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.p-tip i{display:inline-block;width:10px;height:10px;background:#2a78d6;border:1px solid #fff;margin-right:6px;vertical-align:-1px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.foot{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+.foot a{color:inherit}
+.home-pin{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-fg);border:2px solid var(--panel);
+  display:flex;align-items:center;justify-content:center;font:600 13px var(--f-display);box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.wp-pin{width:20px;height:20px;border-radius:50%;background:var(--panel);color:var(--fg);border:1.5px solid var(--muted);
+  display:flex;align-items:center;justify-content:center;font:600 12px var(--f-display)}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="map" role="region" aria-label="Kaart"></div>
+
+<aside id="panel">
+  <header>
+    <h1>Gravellus</h1>
+    <p class="sub">Een nieuw rondje vanaf de voordeur.</p>
+  </header>
+
+  <div class="group">
+    <div class="label">Startpunt</div>
+    <form class="row" id="startForm">
+      <input id="startQ" type="search" placeholder="Plaats of adres" autocomplete="off" aria-label="Zoek een startpunt">
+      <button class="btn" type="submit">Zoek</button>
+    </form>
+    <div class="row">
+      <button class="btn" id="btnLocate" type="button">Mijn locatie</button>
+      <button class="btn" id="btnStartMap" type="button" aria-pressed="false">Tik op de kaart</button>
+      <button class="btn" id="btnStartReset" type="button">Wis</button>
+    </div>
+    <p class="hint" id="startTxt"></p>
+    <p class="hint">Of sleep de H. Met Wis ga je terug naar het centrum van Oldenzaal.</p>
+  </div>
+
+  <div class="group">
+    <div class="label">Via (optioneel)</div>
+    <form class="row" id="viaForm">
+      <input id="viaQ" type="search" placeholder="Plaats of adres, bv. Denekamp" autocomplete="off" aria-label="Zoek een via-plaats">
+      <button class="btn" type="submit">Zoek</button>
+    </form>
+    <div class="row"><button class="btn" id="btnViaMap" type="button" aria-pressed="false">Tik op de kaart</button></div>
+    <div id="viaList"></div>
+    <p class="hint">Alle lussen gaan via deze punten (max. 3). Sleep een punt op de kaart om het te verplaatsen.</p>
+  </div>
+
+  <div class="group">
+    <label class="label" for="dist">Afstand <output id="distOut"></output></label>
+    <input id="dist" type="range" min="20" max="150" step="5" value="60">
+  </div>
+
+  <div class="group">
+    <label class="label" for="unp">Minimaal onverhard <output id="unpOut"></output></label>
+    <input id="unp" type="range" min="0" max="90" step="5" value="50">
+  </div>
+
+  <div class="group">
+    <div class="label">Tussenpunten</div>
+    <div class="seg" role="group" aria-label="Aantal tussenpunten">
+      <button type="button" data-n="3" aria-pressed="true">3</button>
+      <button type="button" data-n="4" aria-pressed="false">4</button>
+      <button type="button" data-n="5" aria-pressed="false">5</button>
+      <button type="button" data-n="6" aria-pressed="false">6</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <label class="label" for="profile">Routeprofiel</label>
+    <div class="row">
+      <select id="profile">
+        <option value="gravel">Gravel</option>
+        <option value="fastbike">Racefiets</option>
+        <option value="mtb">MTB</option>
+      </select>
+    </div>
+  </div>
+
+  <button class="primary" id="btnGo" type="button">Genereer 5 lussen</button>
+  <p id="status" role="status" aria-live="polite"></p>
+
+  <div class="group hidden" id="detail">
+    <div class="legend">
+      <span><i style="background:var(--grind)"></i>Onverhard</span>
+      <span><i style="background:var(--paved)"></i>Verhard</span>
+      <span><i style="background:var(--unknown)"></i>Onbekend</span>
+    </div>
+    <div class="row">
+      <button class="btn" id="btnAll" type="button">Alle lussen</button>
+      <button class="btn" id="btnGpx" type="button">Download GPX</button>
+      <label class="check"><input type="checkbox" id="sketch"> Toon schets</label>
+    </div>
+    <div class="label">Hoogteprofiel</div>
+    <p class="hint" id="elevStats"></p>
+    <div id="elev" role="img" aria-label="Hoogteprofiel van de gekozen lus"></div>
+    <p class="hint">Beweeg of tik over het profiel; het punt verschijnt ook op de kaart.</p>
+  </div>
+
+  <div id="list"></div>
+
+  <p class="foot">Routes: <a href="https://brouter.de/brouter-web/" target="_blank" rel="noopener">BRouter</a>, een gratis vrijwilligersserver. Genereer dus met mate.
+  Zoeken: <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener">Nominatim</a> (je zoekterm gaat daarheen).
+  Kaart: © OpenStreetMap-bijdragers.</p>
+</aside>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+"use strict";
+const BROUTER = "https://brouter.de/brouter";
+const DEFAULT_START = [52.3133, 6.9292]; // Oldenzaal, Plein
+const N_CANDIDATES = 5;
+const MAX_REQ = 10;        // BRouter-aanvragen per klik (vrijwilligersserver)
+const MAX_VIA = 3;
+const DETOUR = 1.3;        // aanname: route is 1,3x zo lang als de cirkel
+const LEN_TOL = 0.08;      // binnen 8% van de doelafstand is goed genoeg
+// één kleur per lus in het overzicht (vaste volgorde, kleurenblind-getoetst); geel krijgt donkere letters
+const PALETTE = ["#2a78d6","#eb6834","#1baf7a","#eda100","#e87ba4"];
+const ink = c => c === "#eda100" ? "#0b0b0b" : "#fff";
+
+const $ = id => document.getElementById(id);
+const detailEl = $("detail");   // wordt onder de gekozen lus in de lijst gehangen
+const store = {
+  get(k){ try{ return JSON.parse(localStorage.getItem("gravellus:"+k)); }catch{ return null; } },
+  set(k,v){ try{ localStorage.setItem("gravellus:"+k, JSON.stringify(v)); }catch{} }
+};
+
+/* ---------- instellingen ---------- */
+const PROFILES = ["gravel", "fastbike", "mtb"];
+const S = Object.assign({start:DEFAULT_START, dist:60, unp:50, n:3, profile:"gravel", via:[]}, store.get("settings")||{});
+if(!PROFILES.includes(S.profile)) S.profile = "gravel";   // bv. oud bewaard "trekking"
+delete S.wet;
+function saveSettings(){ store.set("settings", S); }
+
+$("dist").value = S.dist; $("unp").value = S.unp; $("profile").value = S.profile;
+document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.n === S.n)));
+function syncOutputs(){
+  $("distOut").textContent = S.dist + " km";
+  $("unpOut").textContent = S.unp + "%";
+  $("startTxt").textContent = (S.startName ? S.startName + " · " : "") + S.start[0].toFixed(4) + ", " + S.start[1].toFixed(4);}
+$("dist").oninput = e => { S.dist = +e.target.value; syncOutputs(); saveSettings(); };
+$("unp").oninput  = e => { S.unp  = +e.target.value; syncOutputs(); saveSettings(); };
+$("profile").onchange = e => { S.profile = e.target.value; syncOutputs(); saveSettings(); };
+document.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
+  S.n = +b.dataset.n; saveSettings();
+  document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+});
+syncOutputs();
+
+/* ---------- kaart ---------- */
+const map = L.map("map").setView(S.start, 11);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {maxZoom:19, attribution:"© OpenStreetMap-bijdragers"}).addTo(map);
+
+const homeMarker = L.marker(S.start, {
+  draggable:true, keyboard:true, title:"Startpunt",
+  icon:L.divIcon({className:"", html:'<div class="home-pin">H</div>', iconSize:[26,26], iconAnchor:[13,13]})
+}).addTo(map);
+// nieuw startpunt: oude lussen horen bij het oude punt, dus die gaan weg
+function setStart(ll, name){
+  if(busy){ setStatus("Even wachten tot de lussen klaar zijn.", true); homeMarker.setLatLng(S.start); return; }
+  S.start = ll; S.startName = name; saveSettings(); syncOutputs();
+  homeMarker.setLatLng(ll); map.panTo(ll);
+  if(loops.length){ loops = []; selected = -1; renderList(); drawRoutes(); detailEl.classList.add("hidden"); setStatus("Startpunt verplaatst."); }
+}
+homeMarker.on("dragend", () => { const ll = homeMarker.getLatLng(); setStart([ll.lat, ll.lng], null); });
+$("btnLocate").onclick = () => {
+  if(!navigator.geolocation){ setStatus("Je browser geeft geen locatie door.", true); return; }
+  navigator.geolocation.getCurrentPosition(p => {
+    setStart([p.coords.latitude, p.coords.longitude], "Mijn locatie"); map.setView(S.start, 12);
+  }, () => setStatus("Locatie niet beschikbaar. Zoek of tik je startpunt aan.", true), {enableHighAccuracy:true, timeout:10000});
+};
+$("btnStartReset").onclick = () => { setStart([...DEFAULT_START], "Centrum Oldenzaal"); map.setView(S.start, 11); };
+$("startForm").onsubmit = async e => {
+  e.preventDefault();
+  const q = $("startQ").value.trim(); if(!q) return;
+  try{
+    const h = await geocode(q);
+    if(!h){ setStatus(`"${q}" niet gevonden.`, true); return; }
+    setStart([+h.lat, +h.lon], h.name || q); map.setView(S.start, 13);
+    $("startQ").value = ""; setStatus(`Start: ${h.display_name}`);
+  }catch{ setStatus("Zoeken lukt nu niet; tik het startpunt anders aan op de kaart.", true); }
+};
+
+const routeLayer = L.layerGroup().addTo(map);
+const sketchLayer = L.layerGroup();
+const viaLayer = L.layerGroup().addTo(map);
+const hoverLayer = L.layerGroup().addTo(map);   // punt op de kaart bij het hoogteprofiel
+
+// aan/uit-knopjes per lus op de kaart zelf
+const toggleCtl = L.control({position:"bottomleft"});
+toggleCtl.onAdd = () => { const div = L.DomUtil.create("div", "loop-toggle hidden"); L.DomEvent.disableClickPropagation(div); return div; };
+toggleCtl.addTo(map);
+$("sketch").onchange = e => e.target.checked ? sketchLayer.addTo(map) : sketchLayer.remove();
+
+/* ---------- via-punten ---------- */
+// S.via = [{ll:[lat,lon], name}]; elke lus moet langs al deze punten
+// wat de volgende tik op de kaart doet: "start", "via" of niets
+let mapMode = null;
+const MODE_BTN = {start:"btnStartMap", via:"btnViaMap"};
+function setMapMode(m){
+  mapMode = m;
+  for(const [k,id] of Object.entries(MODE_BTN)){
+    $(id).setAttribute("aria-pressed", String(k === m));
+    $(id).textContent = k === m ? "Tik nu op de kaart…" : "Tik op de kaart";
+  }
+  map.getContainer().style.cursor = m ? "crosshair" : "";
+}
+function addVia(ll, name){
+  if(S.via.length >= MAX_VIA){ setStatus(`Maximaal ${MAX_VIA} via-punten.`, true); return; }
+  S.via.push({ll, name}); saveSettings(); renderVias();
+}
+function renderVias(){
+  viaLayer.clearLayers();
+  const el = $("viaList"); el.innerHTML = "";
+  S.via.forEach((v,k) => {
+    const m = L.marker(v.ll, {draggable:true, title:v.name || "Via-punt",
+      icon:L.divIcon({className:"", html:`<div class="via-pin">V${k+1}</div>`, iconSize:[24,24], iconAnchor:[12,12]})}).addTo(viaLayer);
+    m.on("dragend", () => { const ll = m.getLatLng(); v.ll = [ll.lat, ll.lng]; v.name = null; saveSettings(); renderVias(); });
+    const row = document.createElement("div"); row.className = "via-item";
+    const txt = document.createElement("span");
+    txt.textContent = `V${k+1}  ${v.name || v.ll[0].toFixed(4)+", "+v.ll[1].toFixed(4)}`;
+    const del = document.createElement("button"); del.type = "button"; del.className = "btn"; del.textContent = "✕";
+    del.setAttribute("aria-label", `Verwijder via-punt ${k+1}`);
+    del.onclick = () => { S.via.splice(k,1); saveSettings(); renderVias(); };
+    row.append(txt, del); el.appendChild(row);
+  });
+}
+$("btnViaMap").onclick = () => setMapMode(mapMode === "via" ? null : "via");
+$("btnStartMap").onclick = () => setMapMode(mapMode === "start" ? null : "start");
+map.on("click", e => {
+  const ll = [e.latlng.lat, e.latlng.lng];
+  if(mapMode === "via") addVia(ll, null);
+  else if(mapMode === "start") setStart(ll, null);
+  else return;
+  setMapMode(null);
+});
+// plaats zoeken via Nominatim (OSM), met voorkeur voor de omgeving van het startpunt
+async function geocode(q){
+  const [lat,lon] = S.start, d = 0.6;
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=nl`
+    + `&viewbox=${lon-d},${lat+d},${lon+d},${lat-d}&q=${encodeURIComponent(q)}`;
+  const hits = await (await fetch(url)).json();
+  return hits[0] || null;
+}
+$("viaForm").onsubmit = async e => {
+  e.preventDefault();
+  const q = $("viaQ").value.trim(); if(!q) return;
+  try{
+    const h = await geocode(q);
+    if(!h){ setStatus(`"${q}" niet gevonden.`, true); return; }
+    addVia([+h.lat, +h.lon], h.name || q);
+    $("viaQ").value = ""; setStatus(`Via ${h.display_name}`);
+  }catch{ setStatus("Zoeken lukt nu niet; tik het punt anders aan op de kaart.", true); }
+};
+renderVias();
+
+/* ---------- geometrie ---------- */
+const R_EARTH = 6371.0088;
+const rad = d => d*Math.PI/180, deg = r => r*180/Math.PI;
+// punt op afstand distKm in richting bearingDeg vanaf [lat,lon]
+function dest([lat,lon], bearingDeg, distKm){
+  const d = distKm/R_EARTH, b = rad(bearingDeg), p1 = rad(lat), l1 = rad(lon);
+  const p2 = Math.asin(Math.sin(p1)*Math.cos(d) + Math.cos(p1)*Math.sin(d)*Math.cos(b));
+  const l2 = l1 + Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(p1), Math.cos(d) - Math.sin(p1)*Math.sin(p2));
+  return [deg(p2), ((deg(l2)+540)%360)-180];
+}
+// cirkel met het startpunt óp de rand; middelpunt in richting theta
+function sketchLoop(start, theta, r, n, jitter){
+  const center = dest(start, theta, r);
+  const back = (theta + 180) % 360;                 // richting van middelpunt naar huis
+  const wp = [];
+  for(let k=1; k<=n; k++) wp.push(dest(center, back + k*360/(n+1), r*jitter[k-1]));
+  return {center, wp};
+}
+function bearing([la1,lo1],[la2,lo2]){
+  const p1 = rad(la1), p2 = rad(la2), dl = rad(lo2-lo1);
+  return (deg(Math.atan2(Math.sin(dl)*Math.cos(p2), Math.cos(p1)*Math.sin(p2) - Math.sin(p1)*Math.cos(p2)*Math.cos(dl))) + 360) % 360;
+}
+function distKm([la1,lo1],[la2,lo2]){
+  const a = Math.sin(rad(la2-la1)/2)**2 + Math.cos(rad(la1))*Math.cos(rad(la2))*Math.sin(rad(lo2-lo1)/2)**2;
+  return 2*R_EARTH*Math.asin(Math.sqrt(a));
+}
+// via-punten vervangen het dichtstbijzijnde schetspunt; daarna alles in rijvolgorde (met de klok mee vanaf huis)
+function withVias(center, back, wp, vias){
+  const ang = p => ((bearing(center,p) - back) % 360 + 360) % 360;
+  const pts = wp.map(p => ({p, a:ang(p), via:false}));
+  for(const v of vias){
+    const a = ang(v);
+    let best = -1, bd = Infinity;
+    pts.forEach((q,i) => { if(q.via) return; const d = Math.min(Math.abs(q.a-a), 360-Math.abs(q.a-a)); if(d < bd){ bd = d; best = i; } });
+    if(best >= 0) pts.splice(best, 1);
+    pts.push({p:v, a, via:true});
+  }
+  return pts.sort((x,y) => x.a - y.a).map(q => q.p);
+}
+const COMPASS = ["N","NO","O","ZO","Z","ZW","W","NW"];
+const compass = b => COMPASS[Math.round(((b%360)+360)%360/45)%8];
+
+/* ---------- ondergrond ---------- */
+const UNPAVED = new Set(["unpaved","gravel","fine_gravel","compacted","dirt","earth","ground","grass","sand","mud",
+  "pebblestone","woodchips","rock","shells","grass_paver","clay"]);
+const PAVED = new Set(["asphalt","paved","concrete","concrete:plates","concrete:lanes","paving_stones","sett",
+  "cobblestone","unhewn_cobblestone","bricks","metal","wood","chipseal"]);
+const PAVED_HW = new Set(["primary","secondary","tertiary","unclassified","residential","service","living_street","cycleway","road"]);
+function classify(wayTags){
+  const t = {};
+  (wayTags||"").split(" ").forEach(kv => { const i = kv.indexOf("="); if(i>0) t[kv.slice(0,i)] = kv.slice(i+1); });
+  const s = t.surface || t["cycleway:surface"];
+  if(s){ if(UNPAVED.has(s)) return "unpaved"; if(PAVED.has(s)) return "paved"; }
+  if(t.highway === "track"){ if(t.tracktype === "grade1") return "paved"; if(t.tracktype) return "unpaved"; return "unknown"; }
+  if(!s && PAVED_HW.has(t.highway)) return "paved";
+  return "unknown";
+}
+
+/* ---------- BRouter ---------- */
+let reqLeft = 0;           // resterend aantal aanvragen voor deze klik
+async function brouter(points){
+  reqLeft--;
+  const lonlats = points.map(p => p[1].toFixed(6)+","+p[0].toFixed(6)).join("|");
+  const url = `${BROUTER}?lonlats=${lonlats}&profile=${S.profile}&alternativeidx=0&format=geojson`;
+  let res;
+  try{ res = await fetch(url); }
+  catch{ throw new Error("BRouter is niet bereikbaar. De server is misschien druk; probeer het over een minuut opnieuw."); }
+  const txt = await res.text();
+  if(!res.ok) throw new Error("BRouter gaf een fout: " + (txt.trim().slice(0,160) || "HTTP "+res.status));
+  let gj; try{ gj = JSON.parse(txt); }catch{ throw new Error("BRouter gaf een onverwacht antwoord: " + txt.slice(0,160)); }
+  return parseRoute(gj);
+}
+
+// zet de BRouter-'messages' (tabel met WayTags per stuk) om naar gekleurde stukken + statistiek
+function parseRoute(gj){
+  const f = gj.features[0], p = f.properties, coords = f.geometry.coordinates;
+  const msgs = p.messages || [];
+  const head = msgs[0] || [];
+  const iLon = head.indexOf("Longitude"), iLat = head.indexOf("Latitude"),
+        iDist = head.indexOf("Distance"), iTags = head.indexOf("WayTags");
+  const key = c => Math.round(c[0]*1e6)+","+Math.round(c[1]*1e6);
+  // cls[q] = ondergrond van het stukje dat in punt q eindigt
+  const cls = new Array(coords.length).fill("unknown");
+  let prev = 0;
+  for(let m=1; m<msgs.length; m++){
+    const row = msgs[m], k = row[iLon]+","+row[iLat];
+    let j = prev;
+    while(j < coords.length && key(coords[j]) !== k) j++;
+    if(j >= coords.length) continue;
+    const c = classify(row[iTags]);
+    for(let q=prev+1; q<=j; q++) cls[q] = c;
+    prev = j;
+  }
+  return {trackKm: (+p["track-length"] || 0)/1000, ascend: +p["filtered ascend"] || 0, seconds: +p["total-time"] || 0, coords, cls};
+}
+
+// Knipt uitstapjes eruit: de route gaat ergens heen en komt over (vrijwel) dezelfde weg terug, ook als de
+// terugweg over een parallel pad een paar meter ernaast loopt. Ontstaat als een tussenpunt naast een
+// doodlopend pad valt. Werkwijze: de route bemonsteren om de ~20 m; een monster is "dubbel" als er binnen
+// 25 m een ander stuk route in tegengestelde richting ligt (niet het keerpunt zelf). Een stuk tussen twee
+// routepunten die binnen 30 m van elkaar liggen en dat voor ≥ 60% dubbel is, gaat eruit; een kort zijstapje
+// (≤ 15% van de lus, bv. een stokje met een mini-rondje eraan) al bij ≥ 25% dubbel.
+// Niet geknipt: 8-vormen (niet dubbel), stukken langer dan de halve lus, en alles binnen 300 m van een
+// via-punt (daar wil je juist heen). Daarna afstand, ondergrond en stukken opnieuw uit de geometrie.
+const SPUR_DOUBLE = 0.6, SIDE_SHARE = 0.15, SIDE_DOUBLE = 0.25, NEAR_KM = 0.025, JOIN_KM = 0.03, STEP_KM = 0.02, CELL_KM = 0.03;
+function finishRoute(raw, protect){
+  const {coords, cls} = raw;
+  const ll = q => [coords[q][1], coords[q][0]];
+  const kx = 111.32*Math.cos(rad(coords[0][1])), ky = 110.574;          // km per graad, lokaal plat
+  const xy = q => [coords[q][0]*kx, coords[q][1]*ky];
+  const lenOf = idx => { let s = 0; for(let t=1; t<idx.length; t++) s += distKm(ll(idx[t-1]), ll(idx[t])); return s; };
+  const dedupe = idx => { const o = []; for(const q of idx) if(!o.length || distKm(ll(o[o.length-1]), ll(q)) >= 0.01) o.push(q); return o; };
+  // eenvoudig rooster om buren snel te vinden
+  const cellOf = (x,y) => Math.floor(x/CELL_KM)+","+Math.floor(y/CELL_KM);
+  const grid = pts => { const g = new Map(); pts.forEach(([x,y],i) => { const k = cellOf(x,y); if(!g.has(k)) g.set(k, []); g.get(k).push(i); }); return g; };
+  const around = (g, x, y) => { const cx = Math.floor(x/CELL_KM), cy = Math.floor(y/CELL_KM), out = [];
+    for(let a=-1; a<=1; a++) for(let b=-1; b<=1; b++){ const l = g.get((cx+a)+","+(cy+b)); if(l) out.push(...l); } return out; };
+  // monsters langs de route: positie, boogafstand, richting; partner = boogafstand van een tegengesteld stuk ernaast
+  function analyse(st){
+    const arc = [0];
+    for(let t=1; t<st.length; t++) arc.push(arc[t-1] + distKm(ll(st[t-1]), ll(st[t])));
+    const S = [];
+    for(let t=1; t<st.length; t++){
+      const [x0,y0] = xy(st[t-1]), [x1,y1] = xy(st[t]), L = arc[t]-arc[t-1], h = Math.hypot(x1-x0, y1-y0);
+      if(!(L > 0 && h > 0)) continue;
+      const n = Math.ceil(L/STEP_KM);
+      for(let s=0; s<n; s++){ const f = (s+0.5)/n;
+        S.push({x:x0+f*(x1-x0), y:y0+f*(y1-y0), arc:arc[t-1]+f*L, dx:(x1-x0)/h, dy:(y1-y0)/h, len:L/n, partner:null, dbl:false}); }
+    }
+    const g = grid(S.map(s => [s.x, s.y]));
+    S.forEach(s => {
+      let best = NEAR_KM;
+      for(const j of around(g, s.x, s.y)){
+        const o = S[j]; if(Math.abs(o.arc - s.arc) < 0.06) continue;      // keerpunt zelf telt niet
+        const d = Math.hypot(o.x-s.x, o.y-s.y); if(d >= NEAR_KM) continue;
+        const dot = s.dx*o.dx + s.dy*o.dy;
+        if(Math.abs(dot) > 0.5) s.dbl = true;
+        if(dot < -0.5 && d < best){ best = d; s.partner = o.arc; }
+      }
+    });
+    return {arc, S};
+  }
+
+  const all = coords.map((_,q) => q), fullKm = lenOf(all);
+  let st = dedupe(all), S = [];
+  for(let round=0; round<50; round++){
+    const res = analyse(st), arc = res.arc, total = arc[arc.length-1]; S = res.S;
+    const vg = grid(st.map(q => xy(q)));
+    let cut = false;
+    for(let p=0; p<st.length && !cut; p++){
+      const [x,y] = xy(st[p]);
+      const qs = around(vg, x, y).filter(q => q > p && arc[q]-arc[p] >= 0.1 && Math.hypot(xy(st[q])[0]-x, xy(st[q])[1]-y) < JOIN_KM)
+        .sort((a,b) => b-a);                                              // grootste uitstapje eerst
+      for(const q of qs){
+        const a0 = arc[p], a1 = arc[q], L = a1 - a0;
+        if(L > 0.5*total) continue;
+        let dbl = 0;
+        for(const s of S) if(s.arc > a0 && s.arc < a1 && s.partner !== null && s.partner > a0 && s.partner < a1) dbl += s.len;
+        if(dbl < SPUR_DOUBLE*L && !(L <= SIDE_SHARE*total && dbl >= SIDE_DOUBLE*L)) continue;
+        if(st.slice(p, q+1).some(i => protect.some(v => distKm(v, ll(i)) < 0.3))) continue;
+        st = dedupe([...st.slice(0, p+1), ...st.slice(q)]);              // sprong p → q is hooguit 30 m
+        cut = true; break;
+      }
+    }
+    if(!cut) break;
+  }
+  if(lenOf(st) < 0.3*fullKm){ st = dedupe(all); S = analyse(st).S; }    // vangnet: nooit de lus wegknippen
+  const overlap = S.reduce((s,m) => s + (m.dbl ? m.len : 0), 0)/2;      // wat er nog dubbel is (beide kanten geteld)
+
+  const by = {unpaved:0, paved:0, unknown:0}, segs = [];
+  let total = 0;
+  for(let t=1; t<st.length; t++){
+    const a = st[t-1], b = st[t], L = distKm(ll(a), ll(b)), c = cls[b];
+    by[c] += L; total += L;
+    const last = segs[segs.length-1];
+    if(last && last.cls === c) last.pts.push(ll(b)); else segs.push({cls:c, pts:[ll(a), ll(b)]});
+  }
+  const scale = fullKm ? total/fullKm : 1;
+  const climbAll = climb(all.map(q => coords[q][2])), climbCut = climb(st.map(q => coords[q][2]));
+  const tot = total || 1;
+  return {
+    km: (raw.trackKm || fullKm)*scale,
+    ascend: climbAll > 0 ? raw.ascend*climbCut/climbAll : raw.ascend,
+    seconds: raw.seconds*scale,
+    share: {unpaved:by.unpaved/tot, paved:by.paved/tot, unknown:by.unknown/tot},
+    segs, coords: st.map(q => coords[q]), cutKm: fullKm - total, overlapKm: overlap
+  };
+}
+// klimmeters met 3 m drempel, alleen gebruikt voor de verhouding vóór/na knippen
+function climb(e){
+  if(e.some(v => v == null)) return 0;
+  let ref = e[0], s = 0;
+  for(const v of e){ if(v - ref > 3){ s += v - ref; ref = v; } else if(ref - v > 3) ref = v; }
+  return s;
+}
+
+/* ---------- lussen genereren ---------- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// loopsAfter: hoeveel lussen hierna nog moeten; een lengtecorrectie mag alleen als het budget dat toelaat
+async function makeLoop(theta, loopsAfter){
+  const jitter = Array.from({length:S.n}, () => 0.8 + Math.random()*0.4);
+  const vias = S.via.map(v => v.ll);
+  let r = S.dist / (2*Math.PI*DETOUR), sk, wp, route;
+  for(let attempt=0; attempt<2; attempt++){
+    sk = sketchLoop(S.start, theta, r, S.n, jitter);
+    wp = vias.length ? withVias(sk.center, (theta+180)%360, sk.wp, vias) : sk.wp;
+    route = finishRoute(await brouter([S.start, ...wp, S.start]), vias);
+    const ratio = route.km / S.dist;
+    if(Math.abs(ratio-1) <= LEN_TOL || reqLeft <= loopsAfter) break;
+    if(attempt === 0){ r /= ratio; await sleep(350); }   // straal bijstellen en één keer opnieuw
+  }
+  // verste punt van huis: daar komt het nummer van de lus op de kaart
+  let far = route.coords[0], fd = -1;
+  route.coords.forEach(c => { const d = distKm(S.start, [c[1], c[0]]); if(d > fd){ fd = d; far = c; } });
+  return {...route, theta, r, center:sk.center, wp, far:[far[1], far[0]], prof:profileOf(route.coords),
+    start:[...S.start], show:true};
+}
+// cumulatieve afstand (km) en hoogte (m) per punt van de route
+function profileOf(coords){
+  const d = [0], e = coords.map(c => c[2]);
+  for(let i=1; i<coords.length; i++)
+    d.push(d[i-1] + distKm([coords[i-1][1], coords[i-1][0]], [coords[i][1], coords[i][0]]));
+  return {d, e};
+}
+
+let loops = [], selected = -1, busy = false;
+
+$("btnGo").onclick = async () => {
+  if(busy) return;
+  busy = true; $("btnGo").disabled = true; setMapMode(null);
+  loops = []; selected = -1; renderList(); drawRoutes(); detailEl.classList.add("hidden");
+  reqLeft = MAX_REQ;
+  // zonder via-punten: richtingen rondom; met via-punten: waaier rond de richting van die punten
+  const vias = S.via.map(v => v.ll);
+  const viaDir = vias.length
+    ? bearing(S.start, [vias.reduce((s,p) => s+p[0], 0)/vias.length, vias.reduce((s,p) => s+p[1], 0)/vias.length])
+    : null;
+  const offset = Math.random()*360;
+  let errors = 0, lastErr = "";
+  for(let i=0; i<N_CANDIDATES; i++){
+    setStatus(`Lus ${i+1} van ${N_CANDIDATES} berekenen…`);
+    const theta = viaDir === null
+      ? offset + i*360/N_CANDIDATES + (Math.random()*30 - 15)
+      : viaDir + (i - (N_CANDIDATES-1)/2)*24 + (Math.random()*8 - 4);
+    try{
+      const l = await makeLoop(theta, N_CANDIDATES-1-i);
+      l.no = i+1; l.color = PALETTE[i % PALETTE.length];
+      loops.push(l);
+      renderList(); drawRoutes(); fitView();
+    }catch(e){ errors++; lastErr = e.message; }
+    await sleep(350);
+  }
+  if(!loops.length) setStatus(lastErr || "Geen lussen gevonden.", true);
+  else {
+    const ok = loops.filter(l => l.share.unpaved*100 >= S.unp).length;
+    let msg = `${loops.length} lussen klaar, ${ok} met minstens ${S.unp}% onverhard. Tik op een lus voor de ondergrond.`;
+    if(errors) msg += ` ${errors} mislukt.`;
+    const dmax = Math.max(0, ...vias.map(p => distKm(S.start, p)));
+    if(2*dmax*DETOUR > S.dist) msg += ` Let op: een via-punt ligt ${dmax.toFixed(0)} km weg, dat past slecht in ${S.dist} km.`;
+    setStatus(msg);
+  }
+  busy = false; $("btnGo").disabled = false;
+};
+
+/* ---------- weergave ---------- */
+function setStatus(msg, err=false){ $("status").textContent = msg; $("status").classList.toggle("err", err); }
+const pct = x => Math.round(x*100);
+function fmtTime(s){ if(!s) return ""; const h = Math.floor(s/3600), m = Math.round((s%3600)/60); return ` · ${h}:${String(m).padStart(2,"0")} u`; }
+
+function renderList(){
+  const el = $("list"); el.innerHTML = "";
+  loops.forEach((l,i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "cand" + (l.show || i === selected ? "" : " off"); b.setAttribute("aria-pressed", String(i === selected));
+    const low = l.share.unpaved*100 < S.unp;
+    b.innerHTML =
+      `<span class="no" style="background:${l.color};color:${ink(l.color)}">${l.no}</span>
+       <span><span class="km">${l.km.toFixed(1).replace(".",",")} km</span> <span class="meta">${compass(l.theta)}</span><br>
+       <span class="meta">↗ ${Math.round(l.ascend)} m klimmen${fmtTime(l.seconds)}${l.overlapKm >= 0.2 ? ` · ↔ ${l.overlapKm.toFixed(1).replace(".",",")} km dubbel` : ""}</span></span>
+       <span class="pct${low?" low":""}">${pct(l.share.unpaved)}%<br><span class="meta">onverhard</span></span>
+       <span class="bar"><span style="width:${pct(l.share.unpaved)}%;background:var(--grind)"></span><span style="width:${pct(l.share.paved)}%;background:var(--paved)"></span><span style="width:${pct(l.share.unknown)}%;background:var(--unknown)"></span></span>
+       <span class="meta split">verhard ${pct(l.share.paved)}% · onbekend ${pct(l.share.unknown)}%</span>`;
+    b.onclick = () => { select(i); if(selected !== -1) detailEl.scrollIntoView({block:"nearest", behavior:"smooth"}); };
+    el.appendChild(b);
+    if(i === selected) el.appendChild(detailEl);       // uitgeklapt: details + profiel direct onder de gekozen lus
+  });
+  if(selected === -1) el.appendChild(detailEl);       // (verborgen)
+  renderToggles();
+}
+
+function renderToggles(){
+  const div = toggleCtl.getContainer(); div.innerHTML = "";
+  div.classList.toggle("hidden", !loops.length);
+  div.append("Op kaart:");
+  loops.forEach((l,i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = l.no; b.setAttribute("aria-pressed", String(l.show));
+    b.style.setProperty("--c", l.color); b.style.color = ink(l.color);
+    b.title = `Lus ${l.no} ${l.show ? "verbergen" : "tonen"}`;
+    b.onclick = () => {
+      l.show = !l.show;
+      if(!l.show && selected === i){ selected = -1; detailEl.classList.add("hidden"); }
+      renderList(); drawRoutes();
+    };
+    div.appendChild(b);
+  });
+}
+
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+const latlngs = l => l.coords.map(c => [c[1], c[0]]);
+
+// overzicht (selected = -1): alle lussen in hun eigen kleur.
+// gekozen lus: die in ondergrondkleuren, de rest vaag op de achtergrond (blijft aantikbaar).
+function drawRoutes(){
+  routeLayer.clearLayers(); sketchLayer.clearLayers(); hoverLayer.clearLayers();
+  const faint = selected !== -1;
+  loops.forEach((l,i) => {
+    if(i === selected || !l.show) return;
+    L.polyline(latlngs(l), {color:l.color, weight:faint ? 3 : 4, opacity:faint ? .4 : .9, lineCap:"round", lineJoin:"round"})
+      .on("click", () => select(i)).addTo(routeLayer);
+    if(!faint) addArrows(l, l.color);
+  });
+  if(faint){
+    const l = loops[selected];
+    const color = {unpaved:cssVar("--grind"), paved:cssVar("--paved"), unknown:cssVar("--unknown")};
+    l.segs.forEach(s => L.polyline(s.pts, {
+      color:color[s.cls], weight: s.cls==="unpaved" ? 5 : 4, opacity:.95,
+      dashArray: s.cls==="unknown" ? "6 6" : null, lineCap:"round"
+    }).addTo(routeLayer));
+    // schets: de cirkel en de tussenpunten waar de lus uit is opgebouwd
+    L.circle(l.center, {radius:l.r*1000, color:cssVar("--muted"), weight:1, dashArray:"4 6", fill:false}).addTo(sketchLayer);
+    l.wp.forEach((p,k) => L.marker(p, {interactive:false,
+      icon:L.divIcon({className:"", html:`<div class="wp-pin">${k+1}</div>`, iconSize:[20,20], iconAnchor:[10,10]})}).addTo(sketchLayer));
+    addArrows(l, cssVar("--accent"));
+  }
+  loops.forEach((l,i) => {
+    if(!l.show && i !== selected) return;
+    L.marker(l.far, {title:`Lus ${l.no}`, opacity:faint && i !== selected ? .6 : 1,
+      icon:L.divIcon({className:"", html:`<div class="no-pin" style="background:${l.color};color:${ink(l.color)}">${l.no}</div>`, iconSize:[24,24], iconAnchor:[12,12]})})
+      .on("click", () => select(i)).addTo(routeLayer);
+  });
+}
+// pijltjes in de rijrichting, verspreid over de lus (richting = koers naar een punt ~150 m verderop)
+function addArrows(l, color){
+  const {d} = l.prof, c = l.coords, tot = d[d.length-1];
+  [0.15, 0.38, 0.62, 0.85].forEach(f => {
+    const j = d.findIndex(v => v >= f*tot); if(j < 0) return;
+    let k = j; while(k < c.length-1 && d[k]-d[j] < 0.15) k++;
+    if(k === j) return;
+    const b = bearing([c[j][1], c[j][0]], [c[k][1], c[k][0]]);
+    L.marker([c[j][1], c[j][0]], {interactive:false, keyboard:false, icon:L.divIcon({className:"",
+      html:`<div class="arrow" style="transform:rotate(${b.toFixed(0)}deg)"><svg viewBox="0 0 16 16" width="16" height="16"><path d="M8 1L14.5 14.5 8 11 1.5 14.5Z" fill="${color}" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`,
+      iconSize:[16,16], iconAnchor:[8,8]})}).addTo(routeLayer);
+  });
+}
+function fitView(){
+  const ls = selected === -1 ? loops.filter(l => l.show) : [loops[selected]];
+  if(ls.length) map.fitBounds(L.latLngBounds(ls.flatMap(latlngs)), {padding:[24,24]});
+}
+// nogmaals tikken op de gekozen lus = terug naar het overzicht
+function select(i){
+  if(!loops[i]) return;
+  selected = (i === selected) ? -1 : i;
+  if(selected !== -1) loops[i].show = true;
+  renderList(); drawRoutes(); fitView();
+  detailEl.classList.toggle("hidden", selected === -1);
+  drawProfile();
+}
+
+/* ---------- hoogteprofiel ---------- */
+// hoogte tegen afstand als blauw vlak; rasterlijnen op ronde waarden; tooltip met hoogte, afstand en helling
+const fmtNum = (x, n) => x.toFixed(n).replace(".", ",");
+const niceStep = (span, maxTicks, steps) => steps.find(s => span/s <= maxTicks) || steps[steps.length-1];
+function drawProfile(){
+  const box = $("elev"), l = loops[selected];
+  box.innerHTML = ""; $("elevStats").textContent = "";
+  if(!l) return;
+  const {d, e} = l.prof, tot = d[d.length-1];
+  if(e.some(v => v == null)){ $("elevStats").textContent = "Geen hoogtegegevens voor deze lus."; return; }
+  const lo = Math.min(...e), hi = Math.max(...e);
+  $("elevStats").textContent = `Totaal klimmen ${Math.round(l.ascend)} m · hoogste punt ${Math.round(hi)} m · laagste ${Math.round(lo)} m`
+    + (l.cutKm >= 0.05 ? ` · ${fmtNum(l.cutKm, 1)} km doodlopend heen-en-terug weggeknipt` : "");
+
+  const W = box.clientWidth || 320, H = 170, pl = 40, pr = 8, pt = 8, pb = 22;
+  // y: ronde stappen; vlak land minstens 30 m bereik, anders lijkt elk bultje een berg
+  const ys = niceStep(Math.max(30, hi-lo), 4, [5, 10, 20, 25, 50, 100, 200]);
+  let y0 = Math.floor(lo/ys)*ys, y1 = Math.ceil(hi/ys)*ys;
+  while(y1 - y0 < 30){ y0 -= ys; if(y1 - y0 < 30) y1 += ys; }
+  const xs = niceStep(tot, Math.max(2, Math.floor((W-pl-pr)/65)), [1, 2, 5, 10, 20, 25, 50]);
+  const X = v => pl + v/tot*(W-pl-pr), Y = v => pt + (y1-v)/(y1-y0)*(H-pt-pb), base = H - pb;
+
+  let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+  for(let v=y0; v<=y1+1e-9; v+=ys)
+    s += `<line class="p-grid" x1="${pl}" x2="${W-pr}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${pl-6}" y="${Y(v)+4}" text-anchor="end">${v} m</text>`;
+  for(let k=0; k<=tot; k+=xs){
+    s += `<line class="p-grid" x1="${X(k)}" x2="${X(k)}" y1="${pt}" y2="${base}"/>`;
+    if(X(tot) - X(k) > 42 || k === 0) s += `<text x="${X(k)}" y="${H-5}" text-anchor="${k ? "middle" : "start"}">${k} km</text>`;
+  }
+  s += `<text x="${X(tot)}" y="${H-5}" text-anchor="end">${fmtNum(tot, 1)} km</text>`;
+  const line = d.map((v,i) => `${X(v).toFixed(1)},${Y(e[i]).toFixed(1)}`).join(" ");
+  s += `<polygon class="p-area" points="${X(0)},${base} ${line} ${X(tot)},${base}"/>`;
+  s += `<polyline class="p-line" points="${line}"/>`;
+  s += `<circle class="p-dot hidden" r="4.5"/></svg><div class="p-tip hidden"></div>`;
+  box.innerHTML = s;
+
+  const svg = box.querySelector("svg"), dot = box.querySelector(".p-dot"), tip = box.querySelector(".p-tip");
+  const at = km => {                                   // index van het routepunt het dichtst bij deze afstand
+    let a = 0, b = d.length-1;
+    while(b - a > 1){ const m = (a+b) >> 1; if(d[m] < km) a = m; else b = m; }
+    return (km - d[a] < d[b] - km) ? a : b;
+  };
+  const hover = ev => {
+    const r = svg.getBoundingClientRect();
+    const km = Math.min(tot, Math.max(0, (ev.clientX - r.left - pl)/(W-pl-pr)*tot));
+    const i = at(km), cx = X(d[i]), cy = Y(e[i]);
+    // helling over ~200 m rond het punt
+    const a = at(Math.max(0, d[i]-0.1)), b = at(Math.min(tot, d[i]+0.1));
+    const slope = d[b] > d[a] ? (e[b]-e[a])/((d[b]-d[a])*1000)*100 : 0;
+    dot.setAttribute("cx", cx); dot.setAttribute("cy", cy); dot.classList.remove("hidden");
+    tip.innerHTML = `<i></i>Hoogte: ${Math.round(e[i])} m<br>Afstand: ${fmtNum(d[i], 2)} km<br>Helling: ${fmtNum(slope, 1)} %`;
+    tip.classList.remove("hidden");
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = (cx + 12 + tw > W ? cx - 12 - tw : cx + 12) + "px";
+    tip.style.top = Math.max(0, Math.min(base - th, cy - th/2)) + "px";
+    hoverLayer.clearLayers();
+    L.circleMarker([l.coords[i][1], l.coords[i][0]], {radius:7, color:"#fff", weight:2, fillColor:"#2a78d6", fillOpacity:1}).addTo(hoverLayer);
+  };
+  svg.addEventListener("pointermove", hover);
+  svg.addEventListener("pointerdown", hover);
+  svg.addEventListener("pointerleave", ev => { if(ev.pointerType === "mouse"){ tip.classList.add("hidden"); dot.classList.add("hidden"); } });
+}
+window.addEventListener("resize", () => { if(selected !== -1) drawProfile(); });
+$("btnAll").onclick = () => { if(selected !== -1) select(selected); };
+
+// Op een telefoon eerst het deelmenu (direct naar Zepp / Garmin Connect / Bestanden);
+// lukt dat niet of zit je op een computer, dan gewoon downloaden.
+$("btnGpx").onclick = async () => {
+  const l = loops[selected]; if(!l) return;
+  const name = `Gravellus ${l.km.toFixed(0)} km ${compass(l.theta)}`;
+  const pts = l.coords.map(c => `<trkpt lat="${c[1].toFixed(6)}" lon="${c[0].toFixed(6)}">${c[2]!=null?`<ele>${c[2]}</ele>`:""}</trkpt>`).join("\n");
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Gravellus" xmlns="http://www.topografix.com/GPX/1/1">
+<trk><name>${name}</name><trkseg>
+${pts}
+</trkseg></trk></gpx>`;
+  const fileName = name.replace(/\s+/g,"_") + ".gpx";
+  const blob = new Blob([gpx], {type:"application/gpx+xml"});
+  const phone = matchMedia("(pointer:coarse)").matches;
+  if(phone && navigator.canShare){
+    const file = new File([blob], fileName, {type:"application/gpx+xml"});
+    if(navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file], title:name}); return; }
+      catch(e){ if(e.name === "AbortError") return; }      // zelf geannuleerd: niets doen
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+};
+</script>
+</body>
+</html>
