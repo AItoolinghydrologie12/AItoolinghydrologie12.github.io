@@ -42,7 +42,7 @@ body{
   html,body{height:auto}
   body{grid-template-columns:1fr;grid-template-areas:"map" "panel"}
   #map{height:52vh}
-  input[type=search],select{font-size:16px}   /* iPhone zoomt anders in bij het aantikken van een veld */
+  input[type=search],select,.fld{font-size:16px}   /* iPhone zoomt anders in bij het aantikken van een veld */
   #panel{border-right:0;border-top:1px solid var(--line);overflow:visible;
     padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 }
@@ -110,8 +110,24 @@ input[type=search]{font:inherit;padding:7px 10px;border-radius:8px;border:1px so
 .p-tip{position:absolute;pointer-events:none;background:#24292e;color:#fff;border-radius:6px;padding:6px 9px;
   font:12px/1.45 var(--f-body);font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)}
 .p-tip i{display:inline-block;width:10px;height:10px;background:#2a78d6;border:1px solid #fff;margin-right:6px;vertical-align:-1px}
-.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
-.legend i{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:6px}
+/* gestapelde balk + categorieregels (tikbaar: accentueert die categorie op de kaart) */
+.cand .stack{grid-column:1/-1}
+.stack{display:flex;height:14px;border-radius:5px;overflow:hidden;background:var(--line)}
+.stack span{display:block;height:100%}
+.stripe{background-image:repeating-linear-gradient(45deg,transparent 0 3px,rgba(255,255,255,.55) 3px 6px)}
+.cats{display:flex;flex-direction:column;gap:2px}
+.catrow{display:grid;grid-template-columns:14px 1fr auto auto;gap:8px;align-items:center;width:100%;text-align:left;font:inherit;font-size:14px;
+  color:var(--fg);background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 6px;cursor:pointer;font-variant-numeric:tabular-nums}
+.catrow[aria-pressed=true]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.catrow i{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.25)}
+.catrow .v{color:var(--muted)}
+.warn{margin:0;padding:8px 10px;border-radius:8px;border:1px solid var(--danger);color:var(--danger);font-size:14px}
+.fld{font:inherit;padding:5px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.windctl{background:#fff;color:#1d2820;padding:6px 10px;border-radius:10px;box-shadow:0 1px 5px rgba(0,0,0,.3);font:500 13px var(--f-body);display:flex;gap:8px;align-items:center}
+.windctl svg{width:26px;height:26px;flex:none}
+.v-good{color:var(--ok)}.v-bad{color:var(--danger)}
+.chips{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:var(--muted)}
+.chips b{color:var(--fg);font-weight:500}
 .foot{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
 .foot a{color:inherit}
 .home-pin{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-fg);border:2px solid var(--panel);
@@ -163,7 +179,7 @@ input[type=search]{font:inherit;padding:7px 10px;border-radius:8px;border:1px so
   </div>
 
   <div class="group">
-    <label class="label" for="unp">Minimaal onverhard <output id="unpOut"></output></label>
+    <label class="label" for="unp">Minimaal gravel <output id="unpOut"></output></label>
     <input id="unp" type="range" min="0" max="90" step="5" value="50">
   </div>
 
@@ -188,40 +204,93 @@ input[type=search]{font:inherit;padding:7px 10px;border-radius:8px;border:1px so
     </div>
   </div>
 
+  <div class="group" id="windOpts">
+    <div class="label">Wind</div>
+    <label class="row hint" for="speed">Gem. snelheid <input id="speed" type="number" min="8" max="45" step="1" class="fld" style="width:70px"> km/u</label>
+    <p class="hint" id="windNote"></p>
+  </div>
+
+  <div class="group" id="gravelOpts">
+    <div class="label">Gravel-opties</div>
+    <div class="seg" id="prefSeg" role="group" aria-label="Ondergrondvoorkeur">
+      <button type="button" data-pref="max" aria-pressed="true">Zoveel mogelijk gravel</button>
+      <button type="button" data-pref="balanced" aria-pressed="false">Gebalanceerd</button>
+      <button type="button" data-pref="paved" aria-pressed="false">Vooral verhard</button>
+    </div>
+    <label class="check"><input type="checkbox" id="optSand"> Vermijd zand</label>
+    <label class="check"><input type="checkbox" id="optBusy"> Vermijd drukke wegen</label>
+    <label class="check"><input type="checkbox" id="optTown"> Vermijd bebouwde kom</label>
+    <p class="hint">Zoveel mogelijk buiten dorpen en steden. Vanuit je startpunt kom je er altijd even doorheen.</p>
+    <label class="check"><input type="checkbox" id="optCobbles"> Klinkers/keien toestaan</label>
+    <label class="row hint" for="sandLimit">Zandwaarschuwing vanaf <input id="sandLimit" type="number" min="0" max="20" step="0.5" style="width:70px;font:inherit;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg)"> km</label>
+  </div>
+
   <button class="primary" id="btnGo" type="button">Genereer 5 lussen</button>
   <p id="status" role="status" aria-live="polite"></p>
 
   <div class="group hidden" id="detail">
-    <div class="legend">
-      <span><i style="background:var(--grind)"></i>Onverhard</span>
-      <span><i style="background:var(--paved)"></i>Verhard</span>
-      <span><i style="background:var(--unknown)"></i>Onbekend</span>
+    <div class="group">
+      <div class="label">Kleur route op</div>
+      <div class="seg" id="colorSeg" role="group" aria-label="Kleur de route op">
+        <button type="button" data-mode="surf" aria-pressed="true">Ondergrond</button>
+        <button type="button" data-mode="road" aria-pressed="false">Wegtype</button>
+        <button type="button" data-mode="wind" id="btnWindMode" aria-pressed="false" disabled>Wind</button>
+      </div>
     </div>
+    <div class="label">Ondergrond</div>
+    <div id="barSurf" class="cats"></div>
+    <p class="hint" id="surfNote"></p>
+    <p class="warn hidden" id="sandWarn" role="alert"></p>
+    <div class="label">Wegtypes</div>
+    <div id="barRoad" class="cats"></div>
+    <div class="label hidden" id="lblWind">Wind langs de route</div>
+    <div id="barWind" class="cats"></div>
+    <p class="hint" id="windLine"></p>
+    <p class="warn hidden" id="windWarn" role="alert"></p>
     <div class="row">
       <button class="btn" id="btnAll" type="button">Alle lussen</button>
       <button class="btn" id="btnGpx" type="button">Download GPX</button>
+      <button class="btn" id="btnFlip" type="button" title="Rijd dezelfde lus de andere kant op">Draai richting om</button>
       <label class="check"><input type="checkbox" id="sketch"> Toon schets</label>
     </div>
     <div class="label">Hoogteprofiel</div>
+    <label class="check"><input type="checkbox" id="profColor" checked> Profiel inkleuren (zelfde kleuren als de route)</label>
     <p class="hint" id="elevStats"></p>
     <div id="elev" role="img" aria-label="Hoogteprofiel van de gekozen lus"></div>
     <p class="hint">Beweeg of tik over het profiel; het punt verschijnt ook op de kaart.</p>
   </div>
 
+  <div class="row hidden" id="sortRow">
+    <label class="label" for="sortBy" style="display:inline">Sorteer</label>
+    <select id="sortBy" aria-label="Sorteer de lussen">
+      <option value="score">Gravel-score</option>
+      <option value="gravel">Gravel-%</option>
+      <option value="dist">Dichtst bij afstand</option>
+      <option value="wind">Windvoordeel</option>
+      <option value="climb">Minst klimmen</option>
+    </select>
+  </div>
   <div id="list"></div>
 
   <p class="foot">Routes: <a href="https://brouter.de/brouter-web/" target="_blank" rel="noopener">BRouter</a>, een gratis vrijwilligersserver. Genereer dus met mate.
   Zoeken: <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noopener">Nominatim</a> (je zoekterm gaat daarheen).
+  Wind: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)<span id="windSrc"></span>.
   Kaart: © OpenStreetMap-bijdragers.</p>
 </aside>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="classify.js"></script>
+<script src="profile.js"></script>
+<script src="wind.js"></script>
 <script>
 "use strict";
 const BROUTER = "https://brouter.de/brouter";
 const DEFAULT_START = [52.3133, 6.9292]; // Oldenzaal, Plein
-const N_CANDIDATES = 5;
-const MAX_REQ = 10;        // BRouter-aanvragen per klik (vrijwilligersserver)
+const N_SHOWN = 5;         // zoveel lussen toont de lijst
+// Gravel: 7 kandidaten, de beste 5 blijven over (≈1,5× de aanvragen); andere profielen blijven bij 5 kandidaten / 10 aanvragen
+const nCand = () => S.profile === "gravel" ? 7 : N_SHOWN;
+const maxReq = () => S.profile === "gravel" ? 15 : 10;   // BRouter-aanvragen per klik (vrijwilligersserver)
+const MIN_SHOWN = 3;       // minder lussen die aan de eisen voldoen dan dit: vul aan met de beste die er is
 const MAX_VIA = 3;
 const DETOUR = 1.3;        // aanname: route is 1,3x zo lang als de cirkel
 const LEN_TOL = 0.08;      // binnen 8% van de doelafstand is goed genoeg
@@ -230,6 +299,7 @@ const PALETTE = ["#2a78d6","#eb6834","#1baf7a","#eda100","#e87ba4"];
 const ink = c => c === "#eda100" ? "#0b0b0b" : "#fff";
 
 const $ = id => document.getElementById(id);
+const GC = window.GC, GP = window.GP, GW = window.GW;   // classify.js, profile.js en wind.js
 const detailEl = $("detail");   // wordt onder de gekozen lus in de lijst gehangen
 const store = {
   get(k){ try{ return JSON.parse(localStorage.getItem("gravellus:"+k)); }catch{ return null; } },
@@ -238,9 +308,16 @@ const store = {
 
 /* ---------- instellingen ---------- */
 const PROFILES = ["gravel", "fastbike", "mtb"];
-const S = Object.assign({start:DEFAULT_START, dist:60, unp:50, n:3, profile:"gravel", via:[]}, store.get("settings")||{});
+const S = Object.assign({start:DEFAULT_START, dist:60, unp:50, n:3, profile:"gravel", via:[],
+  colorMode:"surf", sort:"score", profColor:true,
+  pref:"max", avoidSand:true, avoidBusy:true, avoidTown:false, cobbles:true, sandLimit:1,
+  speeds:{...GW.CONFIG.SPEEDS}, windScale:false}, store.get("settings")||{});
+S.speeds = Object.assign({...GW.CONFIG.SPEEDS}, S.speeds);
+if(!GP.PREF[S.pref]) S.pref = "max";
+GC.CONFIG.SAND_WARN_KM = S.sandLimit;
+if(!["surf","road","wind"].includes(S.colorMode)) S.colorMode = "surf";
 if(!PROFILES.includes(S.profile)) S.profile = "gravel";   // bv. oud bewaard "trekking"
-delete S.wet;
+delete S.wet; delete S.autoDir;
 function saveSettings(){ store.set("settings", S); }
 
 $("dist").value = S.dist; $("unp").value = S.unp; $("profile").value = S.profile;
@@ -252,6 +329,37 @@ function syncOutputs(){
 $("dist").oninput = e => { S.dist = +e.target.value; syncOutputs(); saveSettings(); };
 $("unp").oninput  = e => { S.unp  = +e.target.value; syncOutputs(); saveSettings(); };
 $("profile").onchange = e => { S.profile = e.target.value; syncOutputs(); saveSettings(); };
+// gravel-opties: alleen bij profiel Gravel zichtbaar en actief
+function syncGravelOpts(){
+  $("gravelOpts").classList.toggle("hidden", S.profile !== "gravel");
+  $("btnGo").textContent = `Genereer ${N_SHOWN} lussen`;
+  document.querySelectorAll("#prefSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.pref === S.pref)));
+}
+$("optSand").checked = S.avoidSand; $("optBusy").checked = S.avoidBusy; $("optCobbles").checked = S.cobbles; $("sandLimit").value = S.sandLimit;
+$("optSand").onchange = e => { S.avoidSand = e.target.checked; saveSettings(); };
+$("optBusy").onchange = e => { S.avoidBusy = e.target.checked; saveSettings(); };
+$("optTown").checked = S.avoidTown;
+$("optTown").onchange = e => { S.avoidTown = e.target.checked; saveSettings(); };
+$("optCobbles").onchange = e => { S.cobbles = e.target.checked; saveSettings(); };
+$("sandLimit").onchange = e => { const v = Math.max(0, +e.target.value || 0); S.sandLimit = v; GC.CONFIG.SAND_WARN_KM = v; saveSettings(); renderList(); renderBars(); };
+document.querySelectorAll("#prefSeg button").forEach(b => b.onclick = () => { S.pref = b.dataset.pref; saveSettings(); syncGravelOpts(); });
+$("profile").addEventListener("change", syncGravelOpts);
+syncGravelOpts();
+
+/* ---------- wind: bediening ---------- */
+// vertrektijd: standaard nu (afgerond op het kwartier), vrij aanpasbaar; wordt niet bewaard (een oude tijd is zinloos).
+// Bij elke klik op Genereer schuift een verlopen vertrektijd door naar nu.
+const QUARTER = 15*60*1000;
+const quarterNow = () => Math.round(Date.now()/QUARTER)*QUARTER;
+let depMs = quarterNow();
+const toLocalInput = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset()*60000); return d.toISOString().slice(0,16); };
+function syncWindOpts(){
+  $("speed").value = S.speeds[S.profile];
+}
+$("speed").onchange = e => { const v = Math.min(45, Math.max(8, +e.target.value || S.speeds[S.profile])); S.speeds[S.profile] = v; saveSettings(); syncWindOpts(); reanalyse(); };
+S.windScale = false;   // wind altijd op 10 m (de optie 'fietshoogte' is weggehaald)
+$("profile").addEventListener("change", () => { syncWindOpts(); reanalyse(); });
+syncWindOpts();
 document.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
   S.n = +b.dataset.n; saveSettings();
   document.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
@@ -408,34 +516,54 @@ function withVias(center, back, wp, vias){
 const COMPASS = ["N","NO","O","ZO","Z","ZW","W","NW"];
 const compass = b => COMPASS[Math.round(((b%360)+360)%360/45)%8];
 
-/* ---------- ondergrond ---------- */
-const UNPAVED = new Set(["unpaved","gravel","fine_gravel","compacted","dirt","earth","ground","grass","sand","mud",
-  "pebblestone","woodchips","rock","shells","grass_paver","clay"]);
-const PAVED = new Set(["asphalt","paved","concrete","concrete:plates","concrete:lanes","paving_stones","sett",
-  "cobblestone","unhewn_cobblestone","bricks","metal","wood","chipseal"]);
-const PAVED_HW = new Set(["primary","secondary","tertiary","unclassified","residential","service","living_street","cycleway","road"]);
-function classify(wayTags){
-  const t = {};
-  (wayTags||"").split(" ").forEach(kv => { const i = kv.indexOf("="); if(i>0) t[kv.slice(0,i)] = kv.slice(i+1); });
-  const s = t.surface || t["cycleway:surface"];
-  if(s){ if(UNPAVED.has(s)) return "unpaved"; if(PAVED.has(s)) return "paved"; }
-  if(t.highway === "track"){ if(t.tracktype === "grade1") return "paved"; if(t.tracktype) return "unpaved"; return "unknown"; }
-  if(!s && PAVED_HW.has(t.highway)) return "paved";
-  return "unknown";
-}
+/* ---------- ondergrond en wegtype ---------- */
+// zie classify.js (GC): per sectie {surf, road, derived, ow}; GC.aggregate telt op per lus
 
 /* ---------- BRouter ---------- */
 let reqLeft = 0;           // resterend aantal aanvragen voor deze klik
+const gravelOpts = () => ({pref:S.pref, avoidSand:S.avoidSand, avoidBusy:S.avoidBusy, allowCobbles:S.cobbles, avoidTown:S.avoidTown});
+const profMem = new Map();      // profielsleutel → custom_-id (naast sessionStorage)
+const respCache = new Map();    // identieke aanvraag (url) → antwoordtekst; alleen in het geheugen
+let profNote = "";              // melding voor in de status als het eigen profiel niet lukte
+// Gravel gebruikt een eigen profiel (profile.js), eenmalig geüpload naar brouter.de en gecachet per optiecombinatie.
+// De server geeft bij een profielfout toch een profileid terug, met een apart "error"-veld: dat controleren we.
+async function routeProfile(force){
+  if(S.profile !== "gravel") return S.profile;
+  const text = GP.build(gravelOpts()), key = GP.key(text), sk = "gravellus:prof:" + key;
+  if(!force){
+    if(profMem.has(key)) return profMem.get(key);
+    try{ const id = sessionStorage.getItem(sk); if(id){ profMem.set(key, id); return id; } }catch{}
+  }
+  try{
+    const r = await fetch(`${BROUTER}/profile`, {method:"POST", body:text});
+    const j = await r.json();
+    if(!j.profileid || j.error) throw new Error(j.error || "geen profiel-id");
+    profMem.set(key, j.profileid);
+    try{ sessionStorage.setItem(sk, j.profileid); }catch{}
+    return j.profileid;
+  }catch(e){
+    profNote = "Eigen gravel-profiel niet beschikbaar; het standaard gravel-profiel is gebruikt.";
+    return "gravel";
+  }
+}
 async function brouter(points){
   reqLeft--;
   const lonlats = points.map(p => p[1].toFixed(6)+","+p[0].toFixed(6)).join("|");
-  const url = `${BROUTER}?lonlats=${lonlats}&profile=${S.profile}&alternativeidx=0&format=geojson`;
-  let res;
-  try{ res = await fetch(url); }
-  catch{ throw new Error("BRouter is niet bereikbaar. De server is misschien druk; probeer het over een minuut opnieuw."); }
-  const txt = await res.text();
-  if(!res.ok) throw new Error("BRouter gaf een fout: " + (txt.trim().slice(0,160) || "HTTP "+res.status));
-  let gj; try{ gj = JSON.parse(txt); }catch{ throw new Error("BRouter gaf een onverwacht antwoord: " + txt.slice(0,160)); }
+  let prof = await routeProfile(false), txt = null;
+  for(let attempt=0; attempt<2; attempt++){
+    const url = `${BROUTER}?lonlats=${lonlats}&profile=${prof}&alternativeidx=0&format=geojson`;
+    if(respCache.has(url)){ txt = respCache.get(url); break; }
+    let res;
+    try{ res = await fetch(url); }
+    catch{ throw new Error("BRouter is niet bereikbaar. De server is misschien druk; probeer het over een minuut opnieuw."); }
+    const t = await res.text();
+    if(res.status === 429 || res.status === 503) throw new Error("BRouter is druk of geeft een limiet (HTTP "+res.status+"). Wacht een paar minuten en probeer het opnieuw.");
+    // geüpload profiel verlopen of onbekend: één keer opnieuw uploaden
+    if(!res.ok && attempt === 0 && prof.startsWith("custom_") && /profile/i.test(t)){ prof = await routeProfile(true); continue; }
+    if(!res.ok) throw new Error("BRouter gaf een fout: " + (t.trim().slice(0,160) || "HTTP "+res.status));
+    txt = t; respCache.set(url, t); break;
+  }
+  let gj; try{ gj = JSON.parse(txt); }catch{ throw new Error("BRouter gaf een onverwacht antwoord: " + String(txt).slice(0,160)); }
   return parseRoute(gj);
 }
 
@@ -447,18 +575,19 @@ function parseRoute(gj){
   const iLon = head.indexOf("Longitude"), iLat = head.indexOf("Latitude"),
         iDist = head.indexOf("Distance"), iTags = head.indexOf("WayTags");
   const key = c => Math.round(c[0]*1e6)+","+Math.round(c[1]*1e6);
-  // cls[q] = ondergrond van het stukje dat in punt q eindigt
-  const cls = new Array(coords.length).fill("unknown");
+  // cls[q] = classificatie {surf, road, derived, ow} van het stukje dat in punt q eindigt
+  const cls = new Array(coords.length).fill(GC.classify(""));
   let prev = 0;
   for(let m=1; m<msgs.length; m++){
     const row = msgs[m], k = row[iLon]+","+row[iLat];
     let j = prev;
     while(j < coords.length && key(coords[j]) !== k) j++;
     if(j >= coords.length) continue;
-    const c = classify(row[iTags]);
+    const c = GC.classify(row[iTags]);
     for(let q=prev+1; q<=j; q++) cls[q] = c;
     prev = j;
   }
+  if(coords.length > 1) cls[0] = cls[1];
   return {trackKm: (+p["track-length"] || 0)/1000, ascend: +p["filtered ascend"] || 0, seconds: +p["total-time"] || 0, coords, cls};
 }
 
@@ -535,23 +664,23 @@ function finishRoute(raw, protect){
   if(lenOf(st) < 0.3*fullKm){ st = dedupe(all); S = analyse(st).S; }    // vangnet: nooit de lus wegknippen
   const overlap = S.reduce((s,m) => s + (m.dbl ? m.len : 0), 0)/2;      // wat er nog dubbel is (beide kanten geteld)
 
-  const by = {unpaved:0, paved:0, unknown:0}, segs = [];
+  // per tussenstukje de classificatie van het punt waar het eindigt; daarna optellen per categorie
+  const secs = [];
   let total = 0;
   for(let t=1; t<st.length; t++){
-    const a = st[t-1], b = st[t], L = distKm(ll(a), ll(b)), c = cls[b];
-    by[c] += L; total += L;
-    const last = segs[segs.length-1];
-    if(last && last.cls === c) last.pts.push(ll(b)); else segs.push({cls:c, pts:[ll(a), ll(b)]});
+    const L = distKm(ll(st[t-1]), ll(st[t]));
+    total += L; secs.push({m:L*1000, ...cls[st[t]]});
   }
   const scale = fullKm ? total/fullKm : 1;
   const climbAll = climb(all.map(q => coords[q][2])), climbCut = climb(st.map(q => coords[q][2]));
-  const tot = total || 1;
+  const infos = st.map(q => cls[q]);          // infos[k] hoort bij het stukje dat in coords[k] eindigt
+  if(infos.length > 1) infos[0] = infos[1];
   return {
     km: (raw.trackKm || fullKm)*scale,
     ascend: climbAll > 0 ? raw.ascend*climbCut/climbAll : raw.ascend,
     seconds: raw.seconds*scale,
-    share: {unpaved:by.unpaved/tot, paved:by.paved/tot, unknown:by.unknown/tot},
-    segs, coords: st.map(q => coords[q]), cutKm: fullKm - total, overlapKm: overlap
+    stats: GC.aggregate(secs),
+    infos, coords: st.map(q => coords[q]), cutKm: fullKm - total, overlapKm: overlap
   };
 }
 // klimmeters met 3 m drempel, alleen gebruikt voor de verhouding vóór/na knippen
@@ -561,6 +690,95 @@ function climb(e){
   for(const v of e){ if(v - ref > 3){ s += v - ref; ref = v; } else if(ref - v > 3) ref = v; }
   return s;
 }
+
+/* ---------- wind: data en analyse ---------- */
+// Open-Meteo (gratis, geen key, CORS); KNMI-model voor NL, anders best_match. Eén aanvraag per klik op Genereer,
+// op het startpunt (lusschaal: windveld ≈ uniform), 30 minuten gecachet per startpunt afgerond op 0,05°.
+let wind = null;                 // {h:{t,speed,dir,gust}, model, at} of null
+let windErr = "";
+const windMem = new Map();
+const windCtl = L.control({position:"topright"});
+windCtl.onAdd = () => L.DomUtil.create("div", "windctl hidden");
+windCtl.addTo(map);
+const arrowSvg = fromDeg => `<svg viewBox="0 0 24 24" style="transform:rotate(${Math.round(fromDeg+180)}deg)" aria-hidden="true"><path d="M12 2L19 20 12 16 5 20Z" fill="#2a78d6" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+
+async function loadWind(){
+  const r05 = x => (Math.round(x/0.05)*0.05).toFixed(2), key = r05(S.start[0]) + "," + r05(S.start[1]);
+  const c = windMem.get(key);
+  if(c && Date.now() - c.at < 30*60*1000) return c;
+  for(const model of ["knmi_seamless", null]){
+    try{
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${S.start[0].toFixed(3)}&longitude=${S.start[1].toFixed(3)}`
+        + `&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kmh&timezone=Europe/Amsterdam&forecast_days=3&timeformat=unixtime`
+        + (model ? `&models=${model}` : "");
+      const res = await fetch(url); if(!res.ok) continue;
+      const h = GW.parseOpenMeteo(await res.json());
+      if(!GW.usableFrom(h, Date.now()/1000, 36)) continue;       // KNMI-reeks onvolledig → best_match
+      const w = {h, model: model ? "KNMI" : "best match", at: Date.now()};
+      windMem.set(key, w); return w;
+    }catch{}
+  }
+  return null;
+}
+async function ensureWind(){
+  setStatus("Windverwachting ophalen…");
+  wind = await loadWind();
+  windErr = wind ? "" : "Windgegevens niet beschikbaar; deze lussen zijn zonder windanalyse.";
+  syncWindUi();
+}
+const windScale = () => S.windScale ? GW.CONFIG.BIKE_HEIGHT_FACTOR : 1;
+const windOpts = () => ({hourly:wind.h, startSec:depMs/1000, speedKmh:S.speeds[S.profile], scale:windScale()});
+function analyseLoop(l){ l.wind = wind ? GW.analyse({coords:l.coords, d:l.prof.d}, windOpts()) : null; }
+function reanalyse(){
+  syncWindUi();
+  if(!wind || !loops.length) return;
+  loops.forEach(analyseLoop);
+  renderList(); drawRoutes();
+  if(selected !== -1){ renderBars(); drawProfile(); }
+}
+function syncWindUi(){
+  $("btnWindMode").disabled = !wind;
+  if(!wind && S.colorMode === "wind") setColorMode("surf", true);
+  const ctl = windCtl.getContainer();
+  let note = windErr || "Wordt opgehaald bij het genereren.";
+  if(wind){
+    const w = GW.windAt(wind.h, depMs/1000), v = w.speed*windScale();
+    ctl.innerHTML = arrowSvg(w.dir) + `<span><b>${Math.round(v)} km/u ${GW.compass8(w.dir)}</b> (Bft ${GW.beaufort(v)})<br><small>${S.windScale ? "op fietshoogte" : "op 10 m"} · vlagen ${Math.round(w.gust*windScale())}</small></span>`;
+    ctl.classList.remove("hidden");
+    note = `Bron: Open-Meteo, model ${wind.model}. Wind op ${S.windScale ? "fietshoogte" : "10 m hoogte"}.` + (w.outside ? " ⚠️ Vertrektijd valt buiten de verwachting." : "");
+  } else ctl.classList.add("hidden");
+  $("windNote").textContent = note;
+  $("windSrc").textContent = wind && wind.model === "KNMI" ? " (model: KNMI via Open-Meteo)" : "";
+}
+// omkeren van een lus (geometrie, classificatie, profiel, windanalyse); stats en afstand blijven gelijk
+function applyReverse(l, rev){
+  l.coords = rev.coords; l.infos = rev.infos; l.prof = profileOf(l.coords); l.rev = !l.rev;
+  analyseLoop(l);
+}
+// opnieuw routeren in omgekeerde volgorde (nodig bij eenrichtingswegen); false als dat niet netjes lukt
+async function rerouteReversed(l){
+  reqLeft = 1;
+  const raw = await brouter([l.start, ...l.wp.slice().reverse(), l.start]);
+  const r = finishRoute(raw, S.via.map(v => v.ll));
+  if(r.stats.badKm > 0.05) return false;               // zou tegen een eenrichtingsweg in gaan
+  Object.assign(l, {coords:r.coords, infos:r.infos, stats:r.stats, km:r.km, ascend:r.ascend, seconds:r.seconds,
+    cutKm:r.cutKm, overlapKm:r.overlapKm, prof:profileOf(r.coords), rev:!l.rev, score:GC.gravelScore(r.stats, r.km, S.dist, S)});
+  analyseLoop(l);
+  return true;
+}
+$("btnFlip").onclick = async () => {
+  const l = loops[selected]; if(!l || busy) return;
+  busy = true; $("btnFlip").disabled = true;
+  try{
+    if(l.stats.onewayKm > 0.02){
+      setStatus("Er liggen eenrichtingswegen op deze lus: opnieuw routeren in omgekeerde volgorde…");
+      const ok = await rerouteReversed(l);
+      setStatus(ok ? "Lus omgedraaid (opnieuw gerouteerd)." : "Omdraaien lukt niet zonder tegen een eenrichtingsweg in te rijden; de originele richting is behouden.", !ok);
+    } else { applyReverse(l, GW.reverseRoute(l.coords, l.infos)); setStatus("Lus omgedraaid."); }
+  }catch(e){ setStatus("Omdraaien mislukt: " + e.message + " De originele richting is behouden.", true); }
+  busy = false; $("btnFlip").disabled = false;
+  renderList(); drawRoutes(); renderBars(); drawProfile();
+};
 
 /* ---------- lussen genereren ---------- */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -580,8 +798,10 @@ async function makeLoop(theta, loopsAfter){
   // verste punt van huis: daar komt het nummer van de lus op de kaart
   let far = route.coords[0], fd = -1;
   route.coords.forEach(c => { const d = distKm(S.start, [c[1], c[0]]); if(d > fd){ fd = d; far = c; } });
-  return {...route, theta, r, center:sk.center, wp, far:[far[1], far[0]], prof:profileOf(route.coords),
-    start:[...S.start], show:true};
+  const loop = {...route, theta, r, center:sk.center, wp, far:[far[1], far[0]], prof:profileOf(route.coords),
+    start:[...S.start], show:true, rev:false, score:GC.gravelScore(route.stats, route.km, S.dist, S)};
+  analyseLoop(loop);
+  return loop;
 }
 // cumulatieve afstand (km) en hoogte (m) per punt van de route
 function profileOf(coords){
@@ -593,36 +813,60 @@ function profileOf(coords){
 
 let loops = [], selected = -1, busy = false;
 
+// harde eisen (alleen bij Gravel): minimaal gravel-% en niet te veel zand (als zand vermijden aan staat)
+const meetsMin = l => S.profile !== "gravel" || (l.stats.gravel*100 >= S.unp && !(S.avoidSand && l.stats.sandKm > S.sandLimit));
+// kandidaten → de beste N_SHOWN. Lussen die de eisen halen staan voorop; ontbreken er lussen, dan vullen we aan met
+// de beste van de rest. Halen minder dan MIN_SHOWN lussen de eisen, dan wordt dat gemeld (short = true).
+function pickLoops(all){
+  if(S.profile !== "gravel") return {shown:all.slice(0, N_SHOWN), all, short:false};
+  const byScore = (a,b) => b.score - a.score;
+  const pass = all.filter(meetsMin).sort(byScore), rest = all.filter(l => !meetsMin(l)).sort(byScore);
+  // altijd opvullen tot N_SHOWN met de beste van de rest (die staan achteraan en zijn grijs onder je minimum)
+  const short = pass.length < MIN_SHOWN && all.length > 0;
+  const shown = [...pass, ...rest].slice(0, N_SHOWN);
+  return {shown, all, short};
+}
+
 $("btnGo").onclick = async () => {
   if(busy) return;
   busy = true; $("btnGo").disabled = true; setMapMode(null);
   loops = []; selected = -1; renderList(); drawRoutes(); detailEl.classList.add("hidden");
-  reqLeft = MAX_REQ;
+  reqLeft = maxReq(); profNote = "";
+  const N = nCand();
   // zonder via-punten: richtingen rondom; met via-punten: waaier rond de richting van die punten
   const vias = S.via.map(v => v.ll);
   const viaDir = vias.length
     ? bearing(S.start, [vias.reduce((s,p) => s+p[0], 0)/vias.length, vias.reduce((s,p) => s+p[1], 0)/vias.length])
     : null;
+  if(depMs < quarterNow() - QUARTER){ depMs = quarterNow(); syncWindOpts(); }
+  await ensureWind();
   const offset = Math.random()*360;
   let errors = 0, lastErr = "";
-  for(let i=0; i<N_CANDIDATES; i++){
-    setStatus(`Lus ${i+1} van ${N_CANDIDATES} berekenen…`);
+  for(let i=0; i<N; i++){
+    setStatus(`Lus ${i+1} van ${N} berekenen…`);
     const theta = viaDir === null
-      ? offset + i*360/N_CANDIDATES + (Math.random()*30 - 15)
-      : viaDir + (i - (N_CANDIDATES-1)/2)*24 + (Math.random()*8 - 4);
+      ? offset + i*360/N + (Math.random()*30 - 15)
+      : viaDir + (i - (N-1)/2)*(N > 5 ? 18 : 24) + (Math.random()*8 - 4);
     try{
-      const l = await makeLoop(theta, N_CANDIDATES-1-i);
-      l.no = i+1; l.color = PALETTE[i % PALETTE.length];
+      const l = await makeLoop(theta, N-1-i);
+      l.no = loops.length+1; l.color = PALETTE[loops.length % PALETTE.length];
       loops.push(l);
       renderList(); drawRoutes(); fitView();
-    }catch(e){ errors++; lastErr = e.message; }
+    }catch(e){ errors++; lastErr = e.message; if(/limiet|niet bereikbaar/.test(lastErr)) break; }   // bij een limiet niet doorhameren
     await sleep(350);
   }
+  const pick = pickLoops(loops);
+  loops = pick.shown; selected = -1;
+  loops.forEach((l,i) => { l.no = i+1; l.color = PALETTE[i % PALETTE.length]; });
+  renderList(); drawRoutes(); if(loops.length) fitView();
   if(!loops.length) setStatus(lastErr || "Geen lussen gevonden.", true);
   else {
-    const ok = loops.filter(l => l.share.unpaved*100 >= S.unp).length;
-    let msg = `${loops.length} lussen klaar, ${ok} met minstens ${S.unp}% onverhard. Tik op een lus voor de ondergrond.`;
-    if(errors) msg += ` ${errors} mislukt.`;
+    const best = Math.max(...pick.all.map(l => l.stats.gravel));
+    let msg = `${loops.length} lussen klaar, ${loops.filter(l => meetsMin(l)).length} met minstens ${S.unp}% gravel. Tik op een lus voor ondergrond en wegtypes.`;
+    if(pick.short) msg = `${S.startName ? "Rond " + S.startName : "Vanaf dit startpunt"} haal ik maximaal ${pct(best)}% gravel bij ${S.dist} km; je wilde ${S.unp}%. `
+      + `Dit zijn de beste ${loops.length}. Probeer een andere afstand, startrichting of een lager minimum.`;
+    if(profNote) msg += " " + profNote;
+    if(errors) msg += ` ${errors} mislukt${/limiet|niet bereikbaar/.test(lastErr) ? ": " + lastErr : ""}.`;
     const dmax = Math.max(0, ...vias.map(p => distKm(S.start, p)));
     if(2*dmax*DETOUR > S.dist) msg += ` Let op: een via-punt ligt ${dmax.toFixed(0)} km weg, dat past slecht in ${S.dist} km.`;
     setStatus(msg);
@@ -635,25 +879,123 @@ function setStatus(msg, err=false){ $("status").textContent = msg; $("status").c
 const pct = x => Math.round(x*100);
 function fmtTime(s){ if(!s) return ""; const h = Math.floor(s/3600), m = Math.round((s%3600)/60); return ` · ${h}:${String(m).padStart(2,"0")} u`; }
 
+const SURF_BY = Object.fromEntries(GC.CONFIG.surfaces.map(s => [s.key, s]));
+const ROAD_BY = Object.fromEntries(GC.CONFIG.roads.map(s => [s.key, s]));
+const fmtKm = x => x.toFixed(1).replace(".", ",");
+// volgorde van de lussen in de lijst; l.no en l.color blijven bij de lus
+function sortedIdx(){
+  const key = {score:l => -l.score, gravel:l => -l.stats.gravel, wind:l => -(l.wind ? l.wind.advantage : -999), dist:l => Math.abs(l.km - S.dist), climb:l => l.ascend}[S.sort] || (l => -l.score);
+  return loops.map((_,i) => i).sort((a,b) => key(loops[a]) - key(loops[b]) || a - b);
+}
+const stackHtml = cats => `<span class="stack">${cats.filter(c => c.pct > 0).map(c =>
+  `<span class="${c.dashed ? "stripe" : ""}" style="width:${c.pct}%;background:${c.color}" title="${c.label} ${c.pct}%"></span>`).join("")}</span>`;
+
 function renderList(){
   const el = $("list"); el.innerHTML = "";
-  loops.forEach((l,i) => {
+  $("sortRow").classList.toggle("hidden", loops.length < 2);
+  sortedIdx().forEach(i => {
+    const l = loops[i], st = l.stats;
     const b = document.createElement("button");
     b.type = "button"; b.className = "cand" + (l.show || i === selected ? "" : " off"); b.setAttribute("aria-pressed", String(i === selected));
-    const low = l.share.unpaved*100 < S.unp;
+    const low = st.gravel*100 < S.unp;
+    const sandBad = st.sandKm > GC.CONFIG.SAND_WARN_KM;
     b.innerHTML =
       `<span class="no" style="background:${l.color};color:${ink(l.color)}">${l.no}</span>
-       <span><span class="km">${l.km.toFixed(1).replace(".",",")} km</span> <span class="meta">${compass(l.theta)}</span><br>
-       <span class="meta">↗ ${Math.round(l.ascend)} m klimmen${fmtTime(l.seconds)}${l.overlapKm >= 0.2 ? ` · ↔ ${l.overlapKm.toFixed(1).replace(".",",")} km dubbel` : ""}</span></span>
-       <span class="pct${low?" low":""}">${pct(l.share.unpaved)}%<br><span class="meta">onverhard</span></span>
-       <span class="bar"><span style="width:${pct(l.share.unpaved)}%;background:var(--grind)"></span><span style="width:${pct(l.share.paved)}%;background:var(--paved)"></span><span style="width:${pct(l.share.unknown)}%;background:var(--unknown)"></span></span>
-       <span class="meta split">verhard ${pct(l.share.paved)}% · onbekend ${pct(l.share.unknown)}%</span>`;
+       <span><span class="km">${fmtKm(l.km)} km</span> <span class="meta">${compass(l.theta)}</span><br>
+       <span class="meta">↗ ${Math.round(l.ascend)} m klimmen${fmtTime(l.seconds)}${l.overlapKm >= 0.2 ? ` · ↔ ${fmtKm(l.overlapKm)} km dubbel` : ""}</span></span>
+       <span class="pct${low?" low":""}">${pct(st.gravel)}%<br><span class="meta">gravel</span></span>
+       ${stackHtml(st.surf)}
+       <span class="chips"><span>asfalt <b>${pct(st.asfalt)}%</b></span>${st.sandKm > 0.05 ? `<span>${sandBad ? "⚠️ " : ""}zand <b>${fmtKm(st.sandKm)} km</b></span>` : ""}${st.busy > 0.005 ? `<span>drukke weg <b>${pct(st.busy)}%</b></span>` : ""}</span>
+       ${windBadgeHtml(l)}`;
     b.onclick = () => { select(i); if(selected !== -1) detailEl.scrollIntoView({block:"nearest", behavior:"smooth"}); };
     el.appendChild(b);
     if(i === selected) el.appendChild(detailEl);       // uitgeklapt: details + profiel direct onder de gekozen lus
   });
   if(selected === -1) el.appendChild(detailEl);       // (verborgen)
   renderToggles();
+}
+// badge in het lussenoverzicht: pijl in windrichting (waarheen de wind waait), "18 km/u ZW (Bft 3)" en het oordeel
+function windBadgeHtml(l){
+  if(!l.wind) return "";
+  const r = l.wind, v = GW.verdict(r);
+  return `<span class="chips"><span>${arrowSvgSmall(r.meanDir)} <b>${Math.round(r.meanV)} km/u ${GW.compass8(r.meanDir)}</b> (Bft ${GW.beaufort(r.meanV)})</span>`
+    + `<span class="v-${v.key}"><b>${v.icon} ${v.label}</b></span>${l.rev ? "<span>↺ omgedraaid</span>" : ""}</span>`;
+}
+const arrowSvgSmall = fromDeg => `<svg viewBox="0 0 24 24" width="14" height="14" style="vertical-align:-2px;transform:rotate(${Math.round(fromDeg+180)}deg)" aria-hidden="true"><path d="M12 2L19 20 12 16 5 20Z" fill="currentColor"/></svg>`;
+function windCats(l){
+  const C = GW.CONFIG.CATS, m = Object.fromEntries(C.map(c => [c.key, 0])), d = l.prof.d;
+  for(let k=1; k<l.coords.length; k++) m[GW.catOfH(l.wind.h[k]).key] += d[k] - d[k-1];
+  const pcts = GC.roundTo100(C.map(c => m[c.key]));
+  return C.map((c,i) => ({key:c.key, label:c.label, color:c.color, dashed:false, m:m[c.key]*1000, km:m[c.key], pct:pcts[i]}));
+}
+// detailregel voor de gekozen lus + waarschuwingen
+function renderWindDetail(l){
+  const line = $("windLine"), warn = $("windWarn");
+  if(!l.wind){ line.textContent = windErr || ""; warn.classList.add("hidden"); return; }
+  const r = l.wind, f = h => `gem. ${Math.round(Math.abs(h.avgH))} km/u ${h.avgH >= 0 ? "tegen" : "mee"} (${pct(h.pctHead)}% tegenwind)`;
+  const adv = Math.round(r.advantage);
+  line.textContent = `Heen: ${f(r.heen)} · Terug: ${f(r.terug)} · Windvoordeel ${adv > 0 ? "+" : ""}${adv} km/u · Vlagen tot ${Math.round(r.gustMax)} km/u`
+    + ` · langste tegenwindstrook ${fmtNum(Math.max(r.heen.streakKm, r.terug.streakKm), 1)} km (${r.heen.streakKm >= r.terug.streakKm ? "heen" : "terug"})`
+    + (r.scale !== 1 ? " · wind op fietshoogte" : "") + ".";
+  const w = [];
+  if(r.gustMax > GW.CONFIG.GUST_WARN_KMH) w.push(`⚠️ Vlagen tot ${Math.round(r.gustMax)} km/u verwacht.`);
+  if(r.outside) w.push("⚠️ De vertrektijd valt (deels) buiten de windverwachting; de dichtstbijzijnde uurwaarde is gebruikt.");
+  warn.textContent = w.join(" "); warn.classList.toggle("hidden", !w.length);
+}
+
+/* ---------- categoriebalken (ondergrond / wegtype) met accentuering ---------- */
+let hl = null;     // {mode:"surf"|"road", key} of null: welke categorie op de kaart is geaccentueerd
+function renderBars(){
+  const l = loops[selected]; if(!l) return;
+  const st = l.stats;
+  const groups = [["surf", "barSurf", st.surf], ["road", "barRoad", st.road]];
+  if(l.wind) groups.push(["wind", "barWind", windCats(l)]);
+  else $("barWind").innerHTML = "";
+  $("lblWind").classList.toggle("hidden", !l.wind);
+  renderWindDetail(l);
+  for(const [mode, id, cats] of groups){
+    const box = $(id); box.innerHTML = stackHtml(cats);
+    cats.filter(c => c.m > 0).forEach(c => {
+      const r = document.createElement("button");
+      r.type = "button"; r.className = "catrow";
+      r.setAttribute("aria-pressed", String(!!hl && hl.mode === mode && hl.key === c.key));
+      r.innerHTML = `<i class="${c.dashed ? "stripe" : ""}" style="background:${c.color}"></i><span>${c.label}</span><span class="v">${fmtKm(c.km)} km</span><span><b>${c.pct}%</b></span>`;
+      r.onclick = () => { hl = (hl && hl.mode === mode && hl.key === c.key) ? null : {mode, key:c.key}; if(hl) setColorMode(mode, true); renderBars(); drawRoutes(); drawProfile(); };
+      box.appendChild(r);
+    });
+  }
+  $("surfNote").textContent = st.derivedPct > 0.005 ? `waarvan ${pct(st.derivedPct)}% geschat (surface ontbreekt in OSM; afgeleid uit wegtype)` : "";
+  const sw = $("sandWarn"), warn = st.sandKm > GC.CONFIG.SAND_WARN_KM;
+  sw.classList.toggle("hidden", !warn);
+  if(warn) sw.textContent = `⚠️ ${fmtKm(st.sandKm)} km zand op deze lus. Met een gravelbike is los zand vaak onrijdbaar.`;
+}
+function setColorMode(m, silent){
+  if(m === "wind" && !wind) m = "surf";
+  S.colorMode = m; saveSettings();
+  document.querySelectorAll("#colorSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === m)));
+  if(!silent){ hl = null; renderBars(); drawRoutes(); drawProfile(); }
+}
+document.querySelectorAll("#colorSeg button").forEach(b => b.onclick = () => setColorMode(b.dataset.mode));
+$("sortBy").value = S.sort;
+$("sortBy").onchange = e => { S.sort = e.target.value; saveSettings(); renderList(); };
+$("profColor").checked = S.profColor;
+$("profColor").onchange = e => { S.profColor = e.target.checked; saveSettings(); drawProfile(); };
+
+// categorie van het stukje dat in punt k eindigt, volgens de gekozen kleurmodus
+function catOf(l, k, mode){
+  if(mode === "wind" && l.wind) return GW.catOfH(l.wind.h[k]);
+  const inf = l.infos[k];
+  if(mode === "road") return ROAD_BY[inf.road];
+  return SURF_BY[inf.surf];
+}
+// aaneengesloten stukken met dezelfde categorie: {cat, a, b} (indices in l.coords, a..b inclusief)
+function runsOf(l, mode){
+  const runs = [];
+  for(let k=1; k<l.coords.length; k++){
+    const cat = catOf(l, k, mode), last = runs[runs.length-1];
+    if(last && last.cat.key === cat.key) last.b = k; else runs.push({cat, a:k-1, b:k});
+  }
+  return runs;
 }
 
 function renderToggles(){
@@ -690,11 +1032,16 @@ function drawRoutes(){
   });
   if(faint){
     const l = loops[selected];
-    const color = {unpaved:cssVar("--grind"), paved:cssVar("--paved"), unknown:cssVar("--unknown")};
-    l.segs.forEach(s => L.polyline(s.pts, {
-      color:color[s.cls], weight: s.cls==="unpaved" ? 5 : 4, opacity:.95,
-      dashArray: s.cls==="unknown" ? "6 6" : null, lineCap:"round"
-    }).addTo(routeLayer));
+    // wit randje onder de hele route, zodat lichte kleuren (zand, klinkers) op de kaart blijven opvallen
+    L.polyline(latlngs(l), {color:"#fff", weight:9, opacity:.85, lineCap:"round", lineJoin:"round", interactive:false}).addTo(routeLayer);
+    const mode = S.colorMode;
+    runsOf(l, mode).forEach(r => {
+      const dim = hl && hl.mode === mode && hl.key !== r.cat.key, on = hl && hl.mode === mode && hl.key === r.cat.key;
+      L.polyline(l.coords.slice(r.a, r.b+1).map(c => [c[1], c[0]]), {
+        color:r.cat.color, weight: on ? 8 : dim ? 3 : 5, opacity: dim ? .3 : .95,
+        dashArray: r.cat.dashed ? "6 6" : null, lineCap:"round", lineJoin:"round"
+      }).addTo(routeLayer);
+    });
     // schets: de cirkel en de tussenpunten waar de lus uit is opgebouwd
     L.circle(l.center, {radius:l.r*1000, color:cssVar("--muted"), weight:1, dashArray:"4 6", fill:false}).addTo(sketchLayer);
     l.wp.forEach((p,k) => L.marker(p, {interactive:false,
@@ -729,10 +1076,12 @@ function fitView(){
 function select(i){
   if(!loops[i]) return;
   selected = (i === selected) ? -1 : i;
+  hl = null;
   if(selected !== -1) loops[i].show = true;
   renderList(); drawRoutes(); fitView();
   detailEl.classList.toggle("hidden", selected === -1);
-  drawProfile();
+  setColorMode(S.colorMode, true);
+  renderBars(); drawProfile();
 }
 
 /* ---------- hoogteprofiel ---------- */
@@ -766,7 +1115,14 @@ function drawProfile(){
   }
   s += `<text x="${X(tot)}" y="${H-5}" text-anchor="end">${fmtNum(tot, 1)} km</text>`;
   const line = d.map((v,i) => `${X(v).toFixed(1)},${Y(e[i]).toFixed(1)}`).join(" ");
-  s += `<polygon class="p-area" points="${X(0)},${base} ${line} ${X(tot)},${base}"/>`;
+  if(S.profColor){
+    // vlak per stuk in de kleur van de gekozen modus (ondergrond/wegtype); niet-geaccentueerde stukken worden vaag
+    runsOf(l, S.colorMode).forEach(r => {
+      const dim = hl && hl.mode === S.colorMode && hl.key !== r.cat.key;
+      const pts = []; for(let k=r.a; k<=r.b; k++) pts.push(`${X(d[k]).toFixed(1)},${Y(e[k]).toFixed(1)}`);
+      s += `<polygon points="${X(d[r.a]).toFixed(1)},${base} ${pts.join(" ")} ${X(d[r.b]).toFixed(1)},${base}" fill="${r.cat.color}" fill-opacity="${dim ? .2 : .85}"/>`;
+    });
+  } else s += `<polygon class="p-area" points="${X(0)},${base} ${line} ${X(tot)},${base}"/>`;
   s += `<polyline class="p-line" points="${line}"/>`;
   s += `<circle class="p-dot hidden" r="4.5"/></svg><div class="p-tip hidden"></div>`;
   box.innerHTML = s;
@@ -805,9 +1161,16 @@ $("btnAll").onclick = () => { if(selected !== -1) select(selected); };
 $("btnGpx").onclick = async () => {
   const l = loops[selected]; if(!l) return;
   const name = `Gravellus ${l.km.toFixed(0)} km ${compass(l.theta)}`;
+  // korte samenvatting in <metadata><desc>: afstand, gravel-%, wind en vertrektijd
+  const dep = new Date(depMs), hhmm = dep.toLocaleTimeString("nl-NL", {hour:"2-digit", minute:"2-digit"});
+  const wv = l.wind ? GW.verdict(l.wind) : null;
+  const desc = [`${fmtKm(l.km)} km`, `gravel ${pct(l.stats.gravel)}%`, `asfalt ${pct(l.stats.asfalt)}%`,
+    l.wind ? `wind ${Math.round(l.wind.meanV)} km/u ${GW.compass8(l.wind.meanDir)} (Bft ${GW.beaufort(l.wind.meanV)}), ${wv.label.toLowerCase()}, windvoordeel ${Math.round(l.wind.advantage)} km/u` : null,
+    `vertrek ${hhmm}`].filter(Boolean).join(" · ").replace(/&/g, "&amp;").replace(/</g, "&lt;");
   const pts = l.coords.map(c => `<trkpt lat="${c[1].toFixed(6)}" lon="${c[0].toFixed(6)}">${c[2]!=null?`<ele>${c[2]}</ele>`:""}</trkpt>`).join("\n");
   const gpx = `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Gravellus" xmlns="http://www.topografix.com/GPX/1/1">
+<metadata><name>${name}</name><desc>${desc}</desc></metadata>
 <trk><name>${name}</name><trkseg>
 ${pts}
 </trkseg></trk></gpx>`;
