@@ -65,7 +65,13 @@ const GC_CONFIG = {
   // wegtypen die tellen als "drukke weg" voor de gravel-score (zonder fietspad ernaast)
   BUSY_ROADS: ["provinciaal","druk"],
   // singletrack: smal pad (width < dit, in meter) op onverhard
-  narrowWidth: 1
+  narrowWidth: 1,
+  // bebouwde kom: BRouter geeft op de publieke server geen `lit` of `estimated_town_class` terug. We leiden het af uit
+  // wat er wel is: woonstraten/woonerven/voetgangersgebied, 30- en 50-zones (in Nederland vrijwel altijd binnen de kom),
+  // fietsstraten en verkeersdrempels. `lit` staat er voor het geval het ooit wel terugkomt.
+  townHighways: ["residential","living_street","pedestrian"],
+  townMaxspeed: 50,                      // maxspeed ≤ dit telt als bebouwd
+  townGapM: 300                          // een gat (m) tussen twee bebouwde stukken, ≤ dit, telt ook als bebouwd
 };
 
 function parseTags(wayTags){
@@ -111,6 +117,16 @@ function classifyRoad(t, surfKey){
   return "overig";
 }
 
+// wijst één sectie op bebouwde kom? (sterke aanwijzing; de opvulling tussen twee van zulke stukken doet aggregate)
+function isTownish(t){
+  const C = GC_CONFIG, hw = (t.highway || "").replace(/_link$/, "");
+  if(C.townHighways.includes(hw)) return true;
+  const ms = parseFloat(t.maxspeed);
+  if(ms > 0 && ms <= C.townMaxspeed) return true;
+  if(t.cyclestreet === "yes" || t.bicycle_road === "yes" || t.traffic_calming) return true;
+  return !!t.lit && !["no","disused"].includes(t.lit);
+}
+
 // eenrichtingsweg voor fietsers? (relevant bij omdraaien van een lus)
 function isOnewayForBikes(t){
   if(t["oneway:bicycle"] === "no") return false;
@@ -133,7 +149,7 @@ function classify(wayTags){
   let r = _cache.get(key);
   if(!r){
     const t = parseTags(key), s = classifySurface(t);
-    r = {surf:s.key, derived:s.derived, road:classifyRoad(t, s.key), ow:isOnewayForBikes(t), bad:isAgainstOneway(t)};
+    r = {surf:s.key, derived:s.derived, road:classifyRoad(t, s.key), ow:isOnewayForBikes(t), bad:isAgainstOneway(t), town:isTownish(t)};
     _cache.set(key, r);
   }
   return r;
@@ -149,14 +165,28 @@ function roundTo100(values){
   return r;
 }
 
-// secties [{m, surf, road, derived, ow}] → totalen per categorie (m, %), afgeleid-aandeel, gravel-aandeel, zand, drukke wegen
+// Welke secties (in rijvolgorde) tellen als bebouwd? Een sectie met een bebouwd-signaal, of een sectie waarvan het
+// dichtstbijzijnde bebouwde stuk aan beide kanten binnen townGapM ligt (bv. een fietspad tussen twee woonstraten).
+// Zonder die opvulling zou een dorp met fietspaden en doorgaande wegen "gaten" krijgen.
+function townMask(secs){
+  const gap = GC_CONFIG.townGapM, n = secs.length, before = new Array(n), after = new Array(n);
+  let d = Infinity;                                  // afstand (m) sinds het laatste bebouwde stuk
+  for(let i=0; i<n; i++){ before[i] = secs[i].town ? 0 : d; d = secs[i].town ? 0 : d + secs[i].m; }
+  d = Infinity;
+  for(let i=n-1; i>=0; i--){ after[i] = secs[i].town ? 0 : d; d = secs[i].town ? 0 : d + secs[i].m; }
+  return secs.map((s,i) => !!s.town || before[i] + s.m + after[i] <= gap);     // gat tussen twee bebouwde stukken ≤ gap
+}
+
+// secties [{m, surf, road, derived, ow, town}] → totalen per categorie (m, %), afgeleid-aandeel, gravel-aandeel, zand, drukke wegen, bebouwd
 function aggregate(secs){
   const C = GC_CONFIG;
   const m = {surf:{}, road:{}};
   C.surfaces.forEach(s => m.surf[s.key] = 0);
   C.roads.forEach(r => m.road[r.key] = 0);
-  let total = 0, derived = 0, ow = 0, bad = 0;
-  for(const s of secs){
+  let total = 0, derived = 0, ow = 0, bad = 0, town = 0;
+  const tm = townMask(secs);
+  for(const [i, s] of secs.entries()){
+    if(tm[i]) town += s.m;
     m.surf[s.surf] += s.m; m.road[s.road] += s.m; total += s.m;
     if(s.derived) derived += s.m;
     if(s.ow) ow += s.m;
@@ -177,19 +207,22 @@ function aggregate(secs){
     sandKm: m.surf.zand/1000,
     busy: total ? C.BUSY_ROADS.reduce((a,k) => a + m.road[k], 0)/total : 0,
     onewayKm: ow/1000,
-    badKm: bad/1000
+    badKm: bad/1000,
+    town: total ? town/total : 0,           // aandeel bebouwde kom (0..1)
+    townKm: town/1000
   };
 }
 
 // Gravel-score (hoger = beter): +gravel-%, −asfalt-%, −drukke wegen zonder fietspad, −zand-km, kleine straf voor afstandsafwijking.
 // Gewichten in SCORE_W zodat ze makkelijk aan te passen zijn. Opties (zand/drukke wegen vermijden) schalen de straffen.
-const SCORE_W = {gravel:100, asfalt:30, busy:150, sandKm:10, dev:50};
+// town: alleen met "Vermijd bebouwde kom"; 40% bebouwd kost dan 48 punten (ter vergelijking: 40% minder gravel kost 40).
+const SCORE_W = {gravel:100, asfalt:30, busy:150, sandKm:10, dev:50, town:120};
 function gravelScore(st, km, targetKm, opt){
-  const o = Object.assign({avoidSand:true, avoidBusy:true}, opt || {});
+  const o = Object.assign({avoidSand:true, avoidBusy:true, avoidTown:false}, opt || {});
   const dev = targetKm ? Math.abs(km/targetKm - 1) : 0;
   return SCORE_W.gravel*st.gravel - SCORE_W.asfalt*st.asfalt - (o.avoidBusy ? SCORE_W.busy : 30)*st.busy
-       - (o.avoidSand ? SCORE_W.sandKm : 2)*st.sandKm - SCORE_W.dev*dev;
+       - (o.avoidSand ? SCORE_W.sandKm : 2)*st.sandKm - SCORE_W.dev*dev - (o.avoidTown ? SCORE_W.town : 0)*(st.town || 0);
 }
 
-root.GC = {CONFIG:GC_CONFIG, parseTags, classifySurface, classifyRoad, classify, aggregate, roundTo100, isOnewayForBikes, gravelScore};
+root.GC = {CONFIG:GC_CONFIG, parseTags, classifySurface, classifyRoad, classify, aggregate, roundTo100, isOnewayForBikes, townMask, gravelScore};
 })(typeof window !== "undefined" ? window : globalThis);

@@ -207,12 +207,14 @@ assign maxspeedpenalty
     switch maxspeed=100  1.8 switch highway=primary|secondary 1.8 1.0
 
 # NIEUW: bebouwde kom vermijden. BRouter's estimated_town_class ontbreekt op de publieke server, dus we gebruiken
-# aanwijzingen die in en om dorpen voorkomen: straatverlichting (lit), woonstraten, woonerven en 30-zones.
+# aanwijzingen die in en om dorpen voorkomen: woonstraten, woonerven, 30- en 50-zones (maxspeed). Straatverlichting (lit)
+# staat er nog bij maar komt in de praktijk niet terug in de BRouter-data. Het echte werk (hele lussen door Enschede of
+# Borne afkeuren) doet de score in classify.js; dit profiel stuurt alleen binnen een lus.
 # Alleen een kostenfactor: wie in de stad begint, komt er nog gewoon uit, maar de route blijft er zo kort mogelijk.
 assign townpenalty
 ${town ? `    multiply switch lit=yes|automatic|24/7|sunset-sunrise 1.7 1.0
     multiply switch highway=residential|living_street|service 1.6 1.0
-             switch maxspeed=30 1.2 1.0` : "    1.0"}
+             switch maxspeed=30 1.3 switch maxspeed=50 1.25 1.0` : "    1.0"}
 
 assign costfactor
     multiply townpenalty

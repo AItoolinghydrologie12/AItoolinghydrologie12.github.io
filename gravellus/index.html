@@ -220,7 +220,7 @@ input[type=search]{font:inherit;padding:7px 10px;border-radius:8px;border:1px so
     <label class="check"><input type="checkbox" id="optSand"> Vermijd zand</label>
     <label class="check"><input type="checkbox" id="optBusy"> Vermijd drukke wegen</label>
     <label class="check"><input type="checkbox" id="optTown"> Vermijd bebouwde kom</label>
-    <p class="hint">Zoveel mogelijk buiten dorpen en steden. Vanuit je startpunt kom je er altijd even doorheen.</p>
+    <p class="hint">Lussen met veel woonstraten en 30/50-zones (dorpen en steden) scoren lager en staan onderaan. Vanuit je startpunt kom je er altijd even doorheen.</p>
     <label class="check"><input type="checkbox" id="optCobbles"> Klinkers/keien toestaan</label>
     <label class="row hint" for="sandLimit">Zandwaarschuwing vanaf <input id="sandLimit" type="number" min="0" max="20" step="0.5" style="width:70px;font:inherit;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg)"> km</label>
   </div>
@@ -310,7 +310,7 @@ const store = {
 const PROFILES = ["gravel", "fastbike", "mtb"];
 const S = Object.assign({start:DEFAULT_START, dist:60, unp:50, n:3, profile:"gravel", via:[],
   colorMode:"surf", sort:"score", profColor:true,
-  pref:"max", avoidSand:true, avoidBusy:true, avoidTown:false, cobbles:true, sandLimit:1,
+  pref:"max", avoidSand:true, avoidBusy:true, avoidTown:true, cobbles:true, sandLimit:1,
   speeds:{...GW.CONFIG.SPEEDS}, windScale:false}, store.get("settings")||{});
 S.speeds = Object.assign({...GW.CONFIG.SPEEDS}, S.speeds);
 if(!GP.PREF[S.pref]) S.pref = "max";
@@ -318,6 +318,7 @@ GC.CONFIG.SAND_WARN_KM = S.sandLimit;
 if(!["surf","road","wind"].includes(S.colorMode)) S.colorMode = "surf";
 if(!PROFILES.includes(S.profile)) S.profile = "gravel";   // bv. oud bewaard "trekking"
 delete S.wet; delete S.autoDir;
+if(!S.townV2){ S.avoidTown = true; S.townV2 = true; }   // eenmalig: "Vermijd bebouwde kom" staat nu standaard aan (ook bij al bewaarde instellingen)
 function saveSettings(){ store.set("settings", S); }
 
 $("dist").value = S.dist; $("unp").value = S.unp; $("profile").value = S.profile;
@@ -905,7 +906,7 @@ function renderList(){
        <span class="meta">↗ ${Math.round(l.ascend)} m klimmen${fmtTime(l.seconds)}${l.overlapKm >= 0.2 ? ` · ↔ ${fmtKm(l.overlapKm)} km dubbel` : ""}</span></span>
        <span class="pct${low?" low":""}">${pct(st.gravel)}%<br><span class="meta">gravel</span></span>
        ${stackHtml(st.surf)}
-       <span class="chips"><span>asfalt <b>${pct(st.asfalt)}%</b></span>${st.sandKm > 0.05 ? `<span>${sandBad ? "⚠️ " : ""}zand <b>${fmtKm(st.sandKm)} km</b></span>` : ""}${st.busy > 0.005 ? `<span>drukke weg <b>${pct(st.busy)}%</b></span>` : ""}</span>
+       <span class="chips"><span>asfalt <b>${pct(st.asfalt)}%</b></span>${st.sandKm > 0.05 ? `<span>${sandBad ? "⚠️ " : ""}zand <b>${fmtKm(st.sandKm)} km</b></span>` : ""}${st.busy > 0.005 ? `<span>drukke weg <b>${pct(st.busy)}%</b></span>` : ""}${st.town >= 0.03 ? `<span>${st.town > 0.35 ? "🏘️ " : ""}bebouwd <b>${pct(st.town)}%</b></span>` : ""}</span>
        ${windBadgeHtml(l)}`;
     b.onclick = () => { select(i); if(selected !== -1) detailEl.scrollIntoView({block:"nearest", behavior:"smooth"}); };
     el.appendChild(b);
